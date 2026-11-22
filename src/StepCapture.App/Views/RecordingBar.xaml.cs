@@ -40,7 +40,7 @@ public partial class RecordingBar : Window
 
     public void SetPaused(bool paused)
     {
-        StatusText.Text = paused ? "Paused" : "Recording";
+        StatusText.Text = paused ? "PAUSED" : "RECORDING";
         PauseButton.Content = paused ? "Resume" : "Pause";
         Dot.Fill = paused ? new SolidColorBrush(Color.FromRgb(0xF5, 0xB0, 0x41)) : new SolidColorBrush(Color.FromRgb(0xFF, 0x4D, 0x4F));
     }
