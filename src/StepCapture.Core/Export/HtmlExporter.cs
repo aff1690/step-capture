@@ -10,9 +10,10 @@ public sealed class HtmlExporter : IGuideExporter
     public string Name => "Web page (HTML)";
     public string Extension => ".html";
 
-    public void Export(Guide guide, string path) => File.WriteAllText(path, Render(guide), Encoding.UTF8);
+    public void Export(Guide guide, string path, ExportOptions? options = null) =>
+        File.WriteAllText(path, Render(guide, options?.Letterhead), Encoding.UTF8);
 
-    public static string Render(Guide guide)
+    public static string Render(Guide guide, Letterhead? letterhead = null)
     {
         static string E(string s) => WebUtility.HtmlEncode(s);
         var sb = new StringBuilder();
@@ -40,6 +41,8 @@ public sealed class HtmlExporter : IGuideExporter
                      display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; }
               .cap { font-weight:600; padding-top:3px; }
               .notes { color:var(--muted); margin:6px 0 0 42px; white-space:pre-wrap; }
+              .letterhead img { border:0; border-radius:0; margin:0 0 24px; }
+              .footer { color:var(--muted); font-size:13px; text-align:center; margin-top:32px; white-space:pre-line; }
               img { display:block; max-width:100%; height:auto; margin:12px 0 0; border:1px solid var(--line); border-radius:6px; }
               @media print { body { background:#fff; } li { break-inside: avoid; border-color:#ccc; } }
             </style>
@@ -48,6 +51,8 @@ public sealed class HtmlExporter : IGuideExporter
             <main>
 
             """);
+        if (letterhead?.HeaderImage is { Length: > 0 } banner)
+            sb.Append($"<div class=\"letterhead\"><img alt=\"\" src=\"data:{letterhead.HeaderImageType};base64,{Convert.ToBase64String(banner)}\"></div>\n");
         sb.Append($"<h1>{E(guide.Title)}</h1>\n");
         sb.Append($"<p class=\"meta\">{guide.Steps.Count} steps · {E(guide.Created.ToString("MMMM d, yyyy"))}</p>\n");
         if (!string.IsNullOrWhiteSpace(guide.Description))
@@ -65,7 +70,10 @@ public sealed class HtmlExporter : IGuideExporter
                 sb.Append($"<img alt=\"Step {n}: {E(step.Caption)}\" src=\"data:image/png;base64,{Convert.ToBase64String(png)}\">\n");
             sb.Append("</li>\n");
         }
-        sb.Append("</ol>\n</main>\n</body>\n</html>\n");
+        sb.Append("</ol>\n");
+        if (!string.IsNullOrWhiteSpace(letterhead?.FooterText))
+            sb.Append($"<p class=\"footer\">{E(letterhead.FooterText)}</p>\n");
+        sb.Append("</main>\n</body>\n</html>\n");
         return sb.ToString();
     }
 }

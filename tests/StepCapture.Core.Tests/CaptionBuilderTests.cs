@@ -18,9 +18,9 @@ public class CaptionBuilderTests
     [Fact]
     public void LongNamesAreShortened()
     {
-        string caption = CaptionBuilder.ForClick(StepKind.Click, new ElementInfo { Name = new string('x', 200), ControlType = "button" });
+        string caption = CaptionBuilder.ForClick(StepKind.Click, new ElementInfo { Name = new string('x', 400), ControlType = "button" });
         Assert.Contains("…", caption);
-        Assert.True(caption.Length < 90);
+        Assert.True(caption.Length < 230);
     }
 
     [Fact]

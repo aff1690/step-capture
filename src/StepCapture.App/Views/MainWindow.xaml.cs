@@ -32,12 +32,7 @@ public partial class MainWindow : Window
         StepList.ItemsSource = _steps;
         _steps.CollectionChanged += (_, _) => { Renumber(); UpdateViewState(); };
 
-        foreach (var exporter in Exporters.All)
-        {
-            var item = new MenuItem { Header = exporter.Name + "  (" + exporter.Extension + ")", Tag = exporter };
-            item.Click += OnExport;
-            ExportMenu.Items.Add(item);
-        }
+        BuildExportMenu();
 
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnNew(this, new RoutedEventArgs())), Key.N, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnOpen(this, new RoutedEventArgs())), Key.O, ModifierKeys.Control));
@@ -376,6 +371,82 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---- export menu and letterhead ----
+
+    private void BuildExportMenu()
+    {
+        ExportMenu.Items.Clear();
+        foreach (var exporter in Exporters.All)
+        {
+            var item = new MenuItem { Header = exporter.Name + "  (" + exporter.Extension + ")", Tag = exporter };
+            item.Click += OnExport;
+            ExportMenu.Items.Add(item);
+        }
+
+        var settings = AppSettings.Current;
+        bool hasTemplate = settings.LetterheadPath is { } p && File.Exists(p);
+        bool useLetterhead = hasTemplate && settings.UseLetterhead;
+        ExportMenu.Items.Add(new Separator { Margin = new Thickness(4) });
+        ExportMenu.Items.Add(new MenuItem
+        {
+            Header = new TextBlock { Text = "PAGE STYLE (WORD, PDF, HTML)", FontSize = 11, Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush") },
+            IsEnabled = false,
+        });
+        var blank = new MenuItem { Header = (useLetterhead ? "      " : "✓   ") + "Blank page" };
+        blank.Click += (_, _) => { settings.UseLetterhead = false; settings.Save(); BuildExportMenu(); };
+        ExportMenu.Items.Add(blank);
+        if (hasTemplate)
+        {
+            var letterhead = new MenuItem { Header = (useLetterhead ? "✓   " : "      ") + "Letterhead: " + Path.GetFileName(settings.LetterheadPath) };
+            letterhead.Click += (_, _) => { settings.UseLetterhead = true; settings.Save(); BuildExportMenu(); };
+            ExportMenu.Items.Add(letterhead);
+        }
+        var choose = new MenuItem { Header = "      " + (hasTemplate ? "Change letterhead template…" : "Choose letterhead template…") };
+        choose.Click += (_, _) => ChooseLetterhead();
+        ExportMenu.Items.Add(choose);
+    }
+
+    private void ChooseLetterhead()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Choose a Word template with your letterhead",
+            Filter = "Word templates and documents (*.dotx;*.docx)|*.dotx;*.docx",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            var lh = Letterhead.Load(dlg.FileName);
+            if (lh.HeaderImage is null && string.IsNullOrWhiteSpace(lh.FooterText))
+                MessageBox.Show(this, "That file has no header picture or footer text, so the letterhead will only affect Word exports.",
+                    "Letterhead", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Load letterhead", ex);
+            MessageBox.Show(this, "Could not read that template: " + ex.Message, "Letterhead", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        AppSettings.Current.LetterheadPath = dlg.FileName;
+        AppSettings.Current.UseLetterhead = true;
+        AppSettings.Current.Save();
+        BuildExportMenu();
+    }
+
+    /// <summary>Options for the next export: the letterhead if it's switched on and the template can be read.</summary>
+    private ExportOptions? CurrentExportOptions()
+    {
+        var s = AppSettings.Current;
+        if (!s.UseLetterhead || s.LetterheadPath is not { } path) return null;
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"The letterhead template wasn't found:\n{path}\n\nExporting on a blank page instead.",
+                "Letterhead", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        return new ExportOptions { Letterhead = Letterhead.Load(path) };
+    }
+
     private void OnExportMenu(object sender, RoutedEventArgs e)
     {
         ExportMenu.PlacementTarget = ExportButton;
@@ -395,11 +466,19 @@ public partial class MainWindow : Window
 
         var guide = SyncGuide();
         string path = dlg.FileName;
+        ExportOptions? options;
+        try { options = CurrentExportOptions(); }
+        catch (Exception ex)
+        {
+            Log.Error("Load letterhead", ex);
+            MessageBox.Show(this, "Could not read the letterhead template: " + ex.Message, "Letterhead", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
         Mouse.OverrideCursor = Cursors.Wait;
         StatusText.Text = "Exporting…";
         try
         {
-            await Task.Run(() => exporter.Export(guide, path));
+            await Task.Run(() => exporter.Export(guide, path, options));
         }
         catch (Exception ex)
         {

@@ -5,7 +5,8 @@ namespace StepCapture.Core.Recording;
 /// <summary>Writes plain-English captions for recorded steps.</summary>
 public static class CaptionBuilder
 {
-    private const int MaxNameLength = 60;
+    // Long names wrap in exports; this only guards against absurd window titles.
+    private const int MaxNameLength = 200;
 
     public static string ForClick(StepKind kind, ElementInfo? element)
     {

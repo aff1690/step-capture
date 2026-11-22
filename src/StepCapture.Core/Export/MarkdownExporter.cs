@@ -9,7 +9,7 @@ public sealed class MarkdownExporter : IGuideExporter
     public string Name => "Markdown";
     public string Extension => ".md";
 
-    public void Export(Guide guide, string path)
+    public void Export(Guide guide, string path, ExportOptions? options = null)
     {
         string dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
         string imageFolderName = Path.GetFileNameWithoutExtension(path) + "_images";

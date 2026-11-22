@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using StepCapture.App.Imaging;
 using StepCapture.Core.Export;
 using StepCapture.Core.Model;
 
@@ -11,8 +12,10 @@ namespace StepCapture.App.Views;
 /// <summary>Bindable wrapper around a <see cref="Step"/> for the editor.</summary>
 public sealed class StepItem : INotifyPropertyChanged
 {
-    private readonly Stack<(byte[]? Png, int NextCallout)> _imageUndo = new();
-    private ImageSource? _image, _thumbnail;
+    private sealed record Snapshot(byte[]? Image, byte[]? Base, List<MarkupItem> Markup);
+
+    private readonly Stack<Snapshot> _undo = new();
+    private ImageSource? _image, _thumbnail, _baseImage;
     private int _number;
 
     public StepItem(Step model) => Model = model;
@@ -41,7 +44,7 @@ public sealed class StepItem : INotifyPropertyChanged
 
     public bool HasNotes => !string.IsNullOrWhiteSpace(Model.Notes);
     public bool HasImage => Model.ImagePng is { Length: > 0 };
-    public bool CanUndoImage => _imageUndo.Count > 0;
+    public bool CanUndoImage => _undo.Count > 0;
 
     /// <summary>Show the screenshot editor while there is an image, or a removed image to bring back.</summary>
     public bool ShowImageEditor => HasImage || CanUndoImage;
@@ -57,28 +60,78 @@ public sealed class StepItem : INotifyPropertyChanged
         _ => "Note",
     };
 
-    public (int Width, int Height) PixelSize => HasImage ? PngInfo.GetSize(Model.ImagePng!) : (0, 0);
+    /// <summary>The screenshot without markup.</summary>
+    public byte[]? BasePng => Model.BaseImagePng ?? Model.ImagePng;
 
+    /// <summary>Editable shapes on the screenshot. Call <see cref="Checkpoint"/> before and <see cref="RenderMarkup"/> after changing them.</summary>
+    public List<MarkupItem> Markup => Model.Markup;
+
+    public (int Width, int Height) PixelSize => BasePng is { } png ? PngInfo.GetSize(png) : (0, 0);
+
+    /// <summary>Screenshot with markup (as exported).</summary>
     public ImageSource? Image => _image ??= Decode(Model.ImagePng, 0);
     public ImageSource? Thumbnail => _thumbnail ??= Decode(Model.ImagePng, 240);
 
-    /// <summary>Number the next numbered callout on this screenshot will show.</summary>
-    public int NextCallout { get; private set; } = 1;
+    /// <summary>Screenshot without markup, shown under the editable shapes.</summary>
+    public ImageSource? BaseImage => _baseImage ??= Decode(BasePng, 0);
 
-    /// <summary>Replaces the screenshot, remembering the old one for <see cref="UndoImage"/>.</summary>
-    public void SetImage(byte[]? png, bool usedCallout = false)
+    /// <summary>Remembers the current screenshot and markup so the next change can be undone.</summary>
+    public void Checkpoint()
     {
-        _imageUndo.Push((Model.ImagePng, NextCallout));
-        if (usedCallout) NextCallout++;
-        ApplyImage(png);
+        _undo.Push(new Snapshot(Model.ImagePng, Model.BaseImagePng, Markup.Select(m => m.Clone()).ToList()));
+        OnChanged(nameof(CanUndoImage));
+        OnChanged(nameof(ShowImageEditor));
+    }
+
+    /// <summary>Re-draws the exported image after the markup changed.</summary>
+    public void RenderMarkup()
+    {
+        var basePng = BasePng;
+        if (basePng is null)
+        {
+            Model.ImagePng = Model.BaseImagePng = null;
+            Markup.Clear();
+        }
+        else if (Markup.Count == 0)
+        {
+            Model.ImagePng = basePng;
+            Model.BaseImagePng = null;
+        }
+        else
+        {
+            Model.BaseImagePng = basePng;
+            Model.ImagePng = MarkupRenderer.Render(basePng, Markup);
+        }
+        _image = _thumbnail = null;
+        NotifyImages();
+    }
+
+    /// <summary>Replaces the screenshot underneath the markup (blur, crop) or removes it (null).</summary>
+    public void ReplaceBase(byte[]? png)
+    {
+        if (png is null)
+        {
+            Markup.Clear();
+            Model.BaseImagePng = Model.ImagePng = null;
+        }
+        else
+        {
+            Model.BaseImagePng = png;
+            Model.ImagePng = png;
+        }
+        _baseImage = null;
+        RenderMarkup();
     }
 
     public void UndoImage()
     {
-        if (_imageUndo.Count == 0) return;
-        var (png, callout) = _imageUndo.Pop();
-        NextCallout = callout;
-        ApplyImage(png);
+        if (_undo.Count == 0) return;
+        var s = _undo.Pop();
+        Model.ImagePng = s.Image;
+        Model.BaseImagePng = s.Base;
+        Model.Markup = s.Markup;
+        _image = _thumbnail = _baseImage = null;
+        NotifyImages();
     }
 
     /// <summary>Re-reads the model after the recorder changed it.</summary>
@@ -88,12 +141,12 @@ public sealed class StepItem : INotifyPropertyChanged
         OnChanged(nameof(KindLabel));
     }
 
-    private void ApplyImage(byte[]? png)
+    private void NotifyImages()
     {
-        Model.ImagePng = png;
-        _image = _thumbnail = null;
         OnChanged(nameof(Image));
         OnChanged(nameof(Thumbnail));
+        OnChanged(nameof(BaseImage));
+        OnChanged(nameof(Markup));
         OnChanged(nameof(HasImage));
         OnChanged(nameof(CanUndoImage));
         OnChanged(nameof(ShowImageEditor));

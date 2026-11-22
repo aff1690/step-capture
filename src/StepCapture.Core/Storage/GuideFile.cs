@@ -11,7 +11,7 @@ namespace StepCapture.Core.Storage;
 public static class GuideFile
 {
     public const string Extension = ".stepguide";
-    private const int FormatVersion = 1;
+    private const int FormatVersion = 2; // 2: editable markup
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -21,7 +21,7 @@ public static class GuideFile
     };
 
     private sealed record StepDto(Guid Id, StepKind Kind, string Caption, string Notes, string AppName,
-        DateTimeOffset Timestamp, string? Image);
+        DateTimeOffset Timestamp, string? Image, string? BaseImage = null, List<MarkupItem>? Markup = null);
 
     private sealed record GuideDto(int Version, string Title, string Description, DateTimeOffset Created, List<StepDto> Steps);
 
@@ -34,15 +34,10 @@ public static class GuideFile
             var steps = new List<StepDto>();
             foreach (var s in guide.Steps)
             {
-                string? image = null;
-                if (s.ImagePng is { Length: > 0 } png)
-                {
-                    image = $"images/{s.Id:N}.png";
-                    var entry = zip.CreateEntry(image, CompressionLevel.NoCompression); // PNG is already compressed
-                    using var es = entry.Open();
-                    es.Write(png);
-                }
-                steps.Add(new StepDto(s.Id, s.Kind, s.Caption, s.Notes, s.AppName, s.Timestamp, image));
+                string? image = WriteImage(zip, s.ImagePng, $"images/{s.Id:N}.png");
+                string? baseImage = s.Markup.Count > 0 ? WriteImage(zip, s.BaseImagePng, $"images/{s.Id:N}-base.png") : null;
+                steps.Add(new StepDto(s.Id, s.Kind, s.Caption, s.Notes, s.AppName, s.Timestamp, image,
+                    baseImage, baseImage is null ? null : s.Markup));
             }
 
             var dto = new GuideDto(FormatVersion, guide.Title, guide.Description, guide.Created, steps);
@@ -64,20 +59,36 @@ public static class GuideFile
         var guide = new Guide { Title = dto.Title, Description = dto.Description, Created = dto.Created };
         foreach (var s in dto.Steps)
         {
-            byte[]? png = null;
-            if (s.Image is not null && zip.GetEntry(s.Image) is { } entry)
-            {
-                using var es = entry.Open();
-                using var ms = new MemoryStream();
-                es.CopyTo(ms);
-                png = ms.ToArray();
-            }
-            guide.Steps.Add(new Step
+            var step = new Step
             {
                 Id = s.Id, Kind = s.Kind, Caption = s.Caption, Notes = s.Notes,
-                AppName = s.AppName, Timestamp = s.Timestamp, ImagePng = png,
-            });
+                AppName = s.AppName, Timestamp = s.Timestamp, ImagePng = ReadImage(zip, s.Image),
+            };
+            if (ReadImage(zip, s.BaseImage) is { } basePng && s.Markup is { Count: > 0 } markup)
+            {
+                step.BaseImagePng = basePng;
+                step.Markup = markup;
+            }
+            guide.Steps.Add(step);
         }
         return guide;
+    }
+
+    private static string? WriteImage(ZipArchive zip, byte[]? png, string name)
+    {
+        if (png is not { Length: > 0 }) return null;
+        var entry = zip.CreateEntry(name, CompressionLevel.NoCompression); // PNG is already compressed
+        using var es = entry.Open();
+        es.Write(png);
+        return name;
+    }
+
+    private static byte[]? ReadImage(ZipArchive zip, string? name)
+    {
+        if (name is null || zip.GetEntry(name) is not { } entry) return null;
+        using var es = entry.Open();
+        using var ms = new MemoryStream();
+        es.CopyTo(ms);
+        return ms.ToArray();
     }
 }

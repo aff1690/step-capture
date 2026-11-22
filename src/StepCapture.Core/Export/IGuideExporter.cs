@@ -10,7 +10,7 @@ public interface IGuideExporter
     /// <summary>File extension including the dot, such as ".docx".</summary>
     string Extension { get; }
 
-    void Export(Guide guide, string path);
+    void Export(Guide guide, string path, ExportOptions? options = null);
 }
 
 public static class Exporters

@@ -20,8 +20,14 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
   insert text-only steps, and blur or crop part of a screenshot.
 - **Screenshot markup**: draw arrows, lines, boxes, circles, freehand pen, highlighter, text and numbered
   callouts (1, 2, 3…) in eight colors and three sizes. Hold Shift for straight angles and perfect squares/circles.
-  Shortcuts: V select, A arrow, L line, R box, E circle, P pen, H highlight, T text, N number, Ctrl+Z undo.
-  Markup is drawn into the image, so it shows up in every export.
+  Shapes stay editable: with the Select tool (V) click a shape to select it, drag to move, drag a handle to resize,
+  pick a color or size to change it, double-click text to edit it, press Delete to remove it, or right-click for
+  more. Arrow keys nudge the selected shape. Ctrl+Z undoes any change.
+  Shortcuts: V select, B blur/crop area, A arrow, L line, R box, E circle, P pen, H highlight, T text, N number.
+- **Zoom** while editing screenshots: the − / + buttons, Ctrl+scroll, Ctrl+plus/minus, Fit (Ctrl+0) and 100% (Ctrl+1).
+- **Letterhead**: in the Export menu, choose a Word template (.dotx or .docx) with your company letterhead once,
+  then switch between "Letterhead" and "Blank page". Word exports are built on the template itself (header,
+  footer, margins and styles); PDF and HTML exports use its header picture and footer text.
 - **Light and dark appearance**: toggle with the pill in the top-right corner. The choice is remembered; the first run follows your Windows app theme.
 - **Save / open** guides as `.stepguide` files (a zip of JSON and PNGs).
 - **Export** to a self-contained HTML page, Word (.docx), PDF (US Letter) or Markdown with an images folder.

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
 using Microsoft.Win32;
@@ -11,11 +10,6 @@ public enum AppTheme { Light, Dark }
 /// <summary>Switches between the light and dark color themes and remembers the choice.</summary>
 internal static class ThemeManager
 {
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StepCapture", "settings.json");
-
-    private sealed record Settings(AppTheme? Theme);
-
     public static AppTheme Current { get; private set; } = AppTheme.Dark;
 
     public static event Action? Changed;
@@ -23,7 +17,7 @@ internal static class ThemeManager
     /// <summary>Applies the saved theme, or follows the Windows app theme the first time.</summary>
     public static void Initialize()
     {
-        Apply(LoadSaved() ?? WindowsTheme(), save: false);
+        Apply(AppSettings.Current.Theme ?? WindowsTheme(), save: false);
     }
 
     public static void Toggle() => Apply(Current == AppTheme.Dark ? AppTheme.Light : AppTheme.Dark, save: true);
@@ -36,7 +30,11 @@ internal static class ThemeManager
         dictionaries[0] = new ResourceDictionary { Source = source };
 
         foreach (Window w in Application.Current.Windows) ApplyTitleBar(w);
-        if (save) Save(theme);
+        if (save)
+        {
+            AppSettings.Current.Theme = theme;
+            AppSettings.Current.Save();
+        }
         Changed?.Invoke();
     }
 
@@ -61,32 +59,6 @@ internal static class ThemeManager
         catch
         {
             return AppTheme.Dark;
-        }
-    }
-
-    private static AppTheme? LoadSaved()
-    {
-        try
-        {
-            if (!File.Exists(SettingsPath)) return null;
-            return JsonSerializer.Deserialize<Settings>(File.ReadAllText(SettingsPath))?.Theme;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void Save(AppTheme theme)
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(new Settings(theme)));
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Save settings", ex);
         }
     }
 
