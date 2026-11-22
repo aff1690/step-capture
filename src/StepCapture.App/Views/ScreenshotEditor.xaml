@@ -1,0 +1,97 @@
+<UserControl x:Class="StepCapture.App.Views.ScreenshotEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Tools, colors and sizes -->
+        <WrapPanel Grid.Row="0" Orientation="Horizontal">
+            <RadioButton GroupName="Tool" Tag="Select" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Select an area to blur or crop (V)">
+                <Rectangle Width="15" Height="11" Stroke="{DynamicResource InkBrush}" StrokeThickness="1.5" StrokeDashArray="2 1.5" />
+            </RadioButton>
+            <RadioButton x:Name="ArrowTool" GroupName="Tool" Tag="Arrow" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Arrow (A)">
+                <Path Data="M2,14 L13,3 M6,3 L13,3 L13,10" Stroke="{DynamicResource InkBrush}" StrokeThickness="2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Line" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Line (L)">
+                <Path Data="M2,14 L14,2" Stroke="{DynamicResource InkBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Rectangle" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Box (R)">
+                <Rectangle Width="16" Height="12" Stroke="{DynamicResource InkBrush}" StrokeThickness="2" RadiusX="1.5" RadiusY="1.5" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Ellipse" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Circle (E)">
+                <Ellipse Width="16" Height="13" Stroke="{DynamicResource InkBrush}" StrokeThickness="2" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Pen" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Pen (P)">
+                <Path Data="M1,13 C4,3 7,15 10,7 S14,4 15,3" Stroke="{DynamicResource InkBrush}" StrokeThickness="2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Highlight" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Highlighter (H)">
+                <Grid>
+                    <Rectangle Width="17" Height="9" Fill="{DynamicResource AccentBrush}" Opacity="0.55" RadiusX="1" RadiusY="1" />
+                    <TextBlock Text="ab" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource InkBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Text" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Text (T)">
+                <TextBlock Text="T" FontSize="16" FontWeight="Bold" FontFamily="Georgia" Foreground="{DynamicResource InkBrush}" />
+            </RadioButton>
+            <RadioButton GroupName="Tool" Tag="Number" Style="{StaticResource ToolToggle}" Checked="OnToolChecked" ToolTip="Numbered callout (N)">
+                <Grid Width="17" Height="17">
+                    <Ellipse Fill="{DynamicResource InkBrush}" />
+                    <TextBlock Text="1" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource CardHoverBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+            </RadioButton>
+
+            <Rectangle Width="1" Height="22" Fill="{DynamicResource LineBrush}" Margin="6,0,10,4" VerticalAlignment="Center" />
+
+            <StackPanel x:Name="Swatches" Orientation="Horizontal" />
+
+            <Rectangle Width="1" Height="22" Fill="{DynamicResource LineBrush}" Margin="5,0,10,4" VerticalAlignment="Center" />
+
+            <RadioButton GroupName="Size" Tag="0" Style="{StaticResource ToolToggle}" Checked="OnSizeChecked" ToolTip="Thin">
+                <Ellipse Width="5" Height="5" Fill="{DynamicResource InkBrush}" />
+            </RadioButton>
+            <RadioButton x:Name="MediumSize" GroupName="Size" Tag="1" Style="{StaticResource ToolToggle}" Checked="OnSizeChecked" ToolTip="Medium">
+                <Ellipse Width="8" Height="8" Fill="{DynamicResource InkBrush}" />
+            </RadioButton>
+            <RadioButton GroupName="Size" Tag="2" Style="{StaticResource ToolToggle}" Checked="OnSizeChecked" ToolTip="Thick">
+                <Ellipse Width="12" Height="12" Fill="{DynamicResource InkBrush}" />
+            </RadioButton>
+        </WrapPanel>
+
+        <!-- Hint and image actions -->
+        <DockPanel Grid.Row="1" Margin="0,4,0,10" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="BlurButton" Content="Blur area" Style="{StaticResource ToolButton}" Click="OnBlur" IsEnabled="False"
+                        ToolTip="Pixelate the selected area to hide sensitive information" />
+                <Button x:Name="CropButton" Content="Crop" Style="{StaticResource ToolButton}" Click="OnCrop" IsEnabled="False"
+                        ToolTip="Crop the screenshot to the selected area" />
+                <Button Content="Undo" Style="{StaticResource ToolButton}" Click="OnUndo" IsEnabled="{Binding CanUndoImage}"
+                        ToolTip="Undo the last markup or edit (Ctrl+Z)" />
+                <Button Content="Remove screenshot" Style="{StaticResource ToolButton}" Click="OnRemove" Margin="0" />
+            </StackPanel>
+            <TextBlock x:Name="HintText" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
+        </DockPanel>
+
+        <!-- Screenshot with drawing overlay -->
+        <Border Grid.Row="2" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource CardBorderBrush}"
+                BorderThickness="1" CornerRadius="10" Padding="8">
+            <Grid x:Name="ImageHost" HorizontalAlignment="Center" VerticalAlignment="Top">
+                <Image x:Name="StepImage" Source="{Binding Image}" Stretch="Uniform" StretchDirection="DownOnly"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <Canvas x:Name="Overlay" Background="Transparent" Cursor="Cross" ClipToBounds="True"
+                        MouseLeftButtonDown="OnMouseDown" MouseMove="OnMouseMove" MouseLeftButtonUp="OnMouseUp">
+                    <Rectangle x:Name="SelectionRect" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                               StrokeDashArray="4 2" Fill="{DynamicResource AccentSoftBrush}" Visibility="Collapsed"
+                               IsHitTestVisible="False" />
+                </Canvas>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

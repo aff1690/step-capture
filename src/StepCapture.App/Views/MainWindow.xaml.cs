@@ -11,8 +11,6 @@ using StepCapture.App.Themes;
 using StepCapture.Core.Export;
 using StepCapture.Core.Model;
 using StepCapture.Core.Storage;
-using DrawingRect = System.Drawing.Rectangle;
-using WpfPoint = System.Windows.Point;
 
 namespace StepCapture.App.Views;
 
@@ -27,8 +25,6 @@ public partial class MainWindow : Window
     private Recorder? _recorder;
     private RecordingBar? _bar;
     private int _recordedCount;
-
-    private WpfPoint? _selectStart;
 
     public MainWindow()
     {
@@ -46,6 +42,7 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnNew(this, new RoutedEventArgs())), Key.N, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnOpen(this, new RoutedEventArgs())), Key.O, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnSave(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
+        PreviewKeyDown += OnWindowKeyDown;
         Drop += OnFileDrop;
 
         ThemeManager.Changed += UpdateThemeToggle;
@@ -126,7 +123,6 @@ public partial class MainWindow : Window
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         DetailPane.DataContext = Selected;
-        ClearSelection();
         if (Selected is { } s) StepHeader.Text = $"STEP {s.Number} OF {_steps.Count}";
         UpdateViewState();
     }
@@ -260,6 +256,13 @@ public partial class MainWindow : Window
 
     // ---------------- editing ----------------
 
+    /// <summary>Markup tool shortcuts (A, R, T, Ctrl+Z...) when the user isn't typing in a text box.</summary>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.FocusedElement is TextBox || _recorder is not null || Selected is null) return;
+        if (Editor.HandleShortcut(e)) e.Handled = true;
+    }
+
     private void OnListKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Delete) { OnDeleteStep(sender, e); e.Handled = true; }
@@ -302,87 +305,7 @@ public partial class MainWindow : Window
         SetDirty(true);
     }
 
-    private void OnRemoveImage(object sender, RoutedEventArgs e)
-    {
-        if (Selected is not { } item) return;
-        item.SetImage(null);
-        SetDirty(true);
-    }
-
-    private void OnUndoImage(object sender, RoutedEventArgs e)
-    {
-        Selected?.UndoImage();
-        ClearSelection();
-        SetDirty(true);
-    }
-
-    // ---- selection rectangle on the screenshot ----
-
-    private void OnSelectStart(object sender, MouseButtonEventArgs e)
-    {
-        _selectStart = e.GetPosition(SelectionCanvas);
-        SelectionCanvas.CaptureMouse();
-        UpdateSelectionRect(_selectStart.Value);
-        SelectionRect.Visibility = Visibility.Visible;
-    }
-
-    private void OnSelectMove(object sender, MouseEventArgs e)
-    {
-        if (_selectStart is null) return;
-        UpdateSelectionRect(e.GetPosition(SelectionCanvas));
-    }
-
-    private void OnSelectEnd(object sender, MouseButtonEventArgs e)
-    {
-        if (_selectStart is null) return;
-        SelectionCanvas.ReleaseMouseCapture();
-        _selectStart = null;
-        bool hasSelection = SelectionRect.Width > 4 && SelectionRect.Height > 4;
-        if (!hasSelection) SelectionRect.Visibility = Visibility.Collapsed;
-        BlurButton.IsEnabled = CropButton.IsEnabled = hasSelection;
-    }
-
-    private void UpdateSelectionRect(WpfPoint current)
-    {
-        var start = _selectStart!.Value;
-        double w = SelectionCanvas.ActualWidth, h = SelectionCanvas.ActualHeight;
-        double x1 = Math.Clamp(Math.Min(start.X, current.X), 0, w), y1 = Math.Clamp(Math.Min(start.Y, current.Y), 0, h);
-        double x2 = Math.Clamp(Math.Max(start.X, current.X), 0, w), y2 = Math.Clamp(Math.Max(start.Y, current.Y), 0, h);
-        Canvas.SetLeft(SelectionRect, x1);
-        Canvas.SetTop(SelectionRect, y1);
-        SelectionRect.Width = x2 - x1;
-        SelectionRect.Height = y2 - y1;
-    }
-
-    private void ClearSelection()
-    {
-        _selectStart = null;
-        SelectionRect.Visibility = Visibility.Collapsed;
-        SelectionRect.Width = SelectionRect.Height = 0;
-        BlurButton.IsEnabled = CropButton.IsEnabled = false;
-    }
-
-    /// <summary>The selection rectangle converted from screen layout units to image pixels.</summary>
-    private DrawingRect? SelectionInPixels()
-    {
-        if (Selected is not { HasImage: true } item || SelectionRect.Visibility != Visibility.Visible) return null;
-        var (pw, ph) = item.PixelSize;
-        double sx = pw / SelectionCanvas.ActualWidth, sy = ph / SelectionCanvas.ActualHeight;
-        return new DrawingRect(
-            (int)Math.Round(Canvas.GetLeft(SelectionRect) * sx), (int)Math.Round(Canvas.GetTop(SelectionRect) * sy),
-            (int)Math.Round(SelectionRect.Width * sx), (int)Math.Round(SelectionRect.Height * sy));
-    }
-
-    private void OnBlur(object sender, RoutedEventArgs e) => EditImage(Annotator.Pixelate);
-    private void OnCrop(object sender, RoutedEventArgs e) => EditImage(Annotator.Crop);
-
-    private void EditImage(Func<byte[], DrawingRect, byte[]> edit)
-    {
-        if (Selected is not { } item || SelectionInPixels() is not { } region) return;
-        item.SetImage(edit(item.Model.ImagePng!, region));
-        ClearSelection();
-        SetDirty(true);
-    }
+    private void OnScreenshotEdited() => SetDirty(true);
 
     // ---------------- files ----------------
 

@@ -11,7 +11,7 @@ internal static class Annotator
     private static readonly Color Accent = Color.FromArgb(232, 89, 12);
 
     /// <summary>Scale factor so highlights look the same on 1080p and 4K screens.</summary>
-    private static float ScaleFor(Bitmap b) => Math.Max(1f, Math.Min(b.Width / 1920f, b.Height / 1080f));
+    private static float ScaleFor(Bitmap b) => MarkupGeometry.ScaleFor(b.Width, b.Height);
 
     /// <summary>Highlights the click point with a ring, draws the cursor on top and returns a PNG.</summary>
     public static byte[] RenderClick(CapturedScreen shot, Point click)
@@ -90,6 +90,109 @@ internal static class Annotator
         if (region.Width < 8 || region.Height < 8) return png;
         using var cropped = bmp.Clone(region, PixelFormat.Format24bppRgb);
         return ToPng(cropped);
+    }
+
+    /// <summary>Draws one markup shape onto a PNG and returns the new PNG.</summary>
+    public static byte[] DrawMarkup(byte[] png, MarkupShape shape)
+    {
+        using var bmp = Load(png);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            DrawShape(g, shape);
+        }
+        return ToPng(bmp);
+    }
+
+    private static void DrawShape(Graphics g, MarkupShape s)
+    {
+        var pts = s.Points;
+        if (pts.Count == 0) return;
+        using var pen = new Pen(s.Color, s.StrokeWidth)
+        {
+            StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round,
+        };
+
+        switch (s.Kind)
+        {
+            case MarkupKind.Line when pts.Count >= 2:
+                g.DrawLine(pen, pts[0], pts[^1]);
+                break;
+
+            case MarkupKind.Arrow when pts.Count >= 2:
+            {
+                var (tip, left, right, shaftEnd) = MarkupGeometry.ArrowHead(pts[0], pts[^1], s.StrokeWidth);
+                g.DrawLine(pen, pts[0], shaftEnd);
+                using var brush = new SolidBrush(s.Color);
+                using var outline = new Pen(s.Color, Math.Max(1f, s.StrokeWidth * 0.4f)) { LineJoin = LineJoin.Round };
+                var head = new[] { tip, left, right };
+                g.FillPolygon(brush, head);
+                g.DrawPolygon(outline, head);
+                break;
+            }
+
+            case MarkupKind.Rectangle when pts.Count >= 2:
+            {
+                var r = MarkupGeometry.Normalize(pts[0], pts[^1]);
+                g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
+                break;
+            }
+
+            case MarkupKind.Ellipse when pts.Count >= 2:
+                g.DrawEllipse(pen, MarkupGeometry.Normalize(pts[0], pts[^1]));
+                break;
+
+            case MarkupKind.Highlight when pts.Count >= 2:
+            {
+                using var brush = new SolidBrush(Color.FromArgb(90, s.Color));
+                g.FillRectangle(brush, MarkupGeometry.Normalize(pts[0], pts[^1]));
+                break;
+            }
+
+            case MarkupKind.Pen:
+                if (pts.Count == 1)
+                {
+                    using var dot = new SolidBrush(s.Color);
+                    float d = s.StrokeWidth;
+                    g.FillEllipse(dot, pts[0].X - d / 2, pts[0].Y - d / 2, d, d);
+                }
+                else
+                {
+                    g.DrawLines(pen, pts.ToArray());
+                }
+                break;
+
+            case MarkupKind.Number:
+            {
+                float radius = MarkupGeometry.CalloutRadius(s.FontSize);
+                var c = pts[0];
+                var circle = new RectangleF(c.X - radius, c.Y - radius, radius * 2, radius * 2);
+                using var fill = new SolidBrush(s.Color);
+                using var ring = new Pen(Color.White, Math.Max(2f, s.FontSize / 12f));
+                g.FillEllipse(fill, circle);
+                g.DrawEllipse(ring, circle);
+                using var font = new Font("Segoe UI", s.FontSize * 0.75f, FontStyle.Bold, GraphicsUnit.Pixel);
+                using var textBrush = new SolidBrush(MarkupGeometry.IsLight(s.Color) ? Color.FromArgb(26, 31, 43) : Color.White);
+                using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(s.Text, font, textBrush, circle, format);
+                break;
+            }
+
+            case MarkupKind.Text when !string.IsNullOrWhiteSpace(s.Text):
+            {
+                // Outlined text so it stays readable on any background.
+                using var path = new GraphicsPath();
+                using var family = new FontFamily("Segoe UI");
+                path.AddString(s.Text, family, (int)FontStyle.Bold, s.FontSize, pts[0], StringFormat.GenericTypographic);
+                var haloColor = MarkupGeometry.IsLight(s.Color) ? Color.FromArgb(220, 26, 31, 43) : Color.FromArgb(235, Color.White);
+                using var halo = new Pen(haloColor, Math.Max(3f, s.FontSize / 5f)) { LineJoin = LineJoin.Round };
+                using var fill = new SolidBrush(s.Color);
+                g.DrawPath(halo, path);
+                g.FillPath(fill, path);
+                break;
+            }
+        }
     }
 
     private static void DrawCursor(Graphics g, CapturedScreen shot)

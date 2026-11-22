@@ -11,7 +11,7 @@ namespace StepCapture.App.Views;
 /// <summary>Bindable wrapper around a <see cref="Step"/> for the editor.</summary>
 public sealed class StepItem : INotifyPropertyChanged
 {
-    private readonly Stack<byte[]?> _imageUndo = new();
+    private readonly Stack<(byte[]? Png, int NextCallout)> _imageUndo = new();
     private ImageSource? _image, _thumbnail;
     private int _number;
 
@@ -43,6 +43,9 @@ public sealed class StepItem : INotifyPropertyChanged
     public bool HasImage => Model.ImagePng is { Length: > 0 };
     public bool CanUndoImage => _imageUndo.Count > 0;
 
+    /// <summary>Show the screenshot editor while there is an image, or a removed image to bring back.</summary>
+    public bool ShowImageEditor => HasImage || CanUndoImage;
+
     public string KindLabel => Model.Kind switch
     {
         StepKind.Click => "Click",
@@ -59,16 +62,23 @@ public sealed class StepItem : INotifyPropertyChanged
     public ImageSource? Image => _image ??= Decode(Model.ImagePng, 0);
     public ImageSource? Thumbnail => _thumbnail ??= Decode(Model.ImagePng, 240);
 
+    /// <summary>Number the next numbered callout on this screenshot will show.</summary>
+    public int NextCallout { get; private set; } = 1;
+
     /// <summary>Replaces the screenshot, remembering the old one for <see cref="UndoImage"/>.</summary>
-    public void SetImage(byte[]? png)
+    public void SetImage(byte[]? png, bool usedCallout = false)
     {
-        _imageUndo.Push(Model.ImagePng);
+        _imageUndo.Push((Model.ImagePng, NextCallout));
+        if (usedCallout) NextCallout++;
         ApplyImage(png);
     }
 
     public void UndoImage()
     {
-        if (_imageUndo.Count > 0) ApplyImage(_imageUndo.Pop());
+        if (_imageUndo.Count == 0) return;
+        var (png, callout) = _imageUndo.Pop();
+        NextCallout = callout;
+        ApplyImage(png);
     }
 
     /// <summary>Re-reads the model after the recorder changed it.</summary>
@@ -86,6 +96,7 @@ public sealed class StepItem : INotifyPropertyChanged
         OnChanged(nameof(Thumbnail));
         OnChanged(nameof(HasImage));
         OnChanged(nameof(CanUndoImage));
+        OnChanged(nameof(ShowImageEditor));
     }
 
     private static ImageSource? Decode(byte[]? png, int decodeWidth)
