@@ -5,7 +5,8 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ResizeMode="NoResize" ShowInTaskbar="True" ShowActivated="False"
         FontFamily="Segoe UI" FontSize="13">
-    <Border Background="#1D2330" CornerRadius="10" Padding="14,8" Margin="8"
+    <Border Background="{DynamicResource RecordingBarBrush}" BorderBrush="{DynamicResource RecordingBarBorderBrush}" BorderThickness="1"
+            CornerRadius="12" Padding="14,8" Margin="8"
             MouseLeftButtonDown="OnDrag" ToolTip="Drag to move">
         <Border.Effect>
             <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" />
@@ -23,7 +24,7 @@
                 </Ellipse.Triggers>
             </Ellipse>
             <StackPanel Margin="10,0,18,0" VerticalAlignment="Center">
-                <TextBlock x:Name="StatusText" Text="Recording" Foreground="White" FontWeight="SemiBold" />
+                <TextBlock x:Name="StatusText" Text="RECORDING" Foreground="White" FontFamily="{StaticResource HeadingFont}" FontStretch="Condensed" FontWeight="SemiBold" FontSize="15" />
                 <TextBlock x:Name="CountText" Text="0 steps" Foreground="#A9B1C2" FontSize="11" />
             </StackPanel>
             <Button x:Name="PauseButton" Content="Pause" Click="OnPause" Style="{StaticResource ToolButton}"

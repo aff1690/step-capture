@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using StepCapture.App.Themes;
 using StepCapture.App.Views;
 
 namespace StepCapture.App;
@@ -15,6 +16,7 @@ public partial class App : Application
             if (args.ExceptionObject is Exception ex) Log.Error("Unhandled", ex);
         };
 
+        ThemeManager.Initialize();
         var window = new MainWindow();
         MainWindow = window;
         window.Show();

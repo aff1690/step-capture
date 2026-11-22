@@ -18,6 +18,7 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
 - **Password safety**: typing into password fields is recorded only as "Type your password". The text is never stored.
 - **Editor**: rename the guide, edit captions, add notes, reorder (Ctrl+Up / Ctrl+Down), delete (Del),
   insert text-only steps, and blur or crop part of a screenshot (with undo).
+- **Light and dark appearance**: toggle with the pill in the top-right corner. The choice is remembered; the first run follows your Windows app theme.
 - **Save / open** guides as `.stepguide` files (a zip of JSON and PNGs).
 - **Export** to a self-contained HTML page, Word (.docx), PDF (US Letter) or Markdown with an images folder.
 

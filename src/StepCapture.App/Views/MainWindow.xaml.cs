@@ -7,6 +7,7 @@ using System.Windows.Input;
 using Microsoft.Win32;
 using StepCapture.App.Imaging;
 using StepCapture.App.Recording;
+using StepCapture.App.Themes;
 using StepCapture.Core.Export;
 using StepCapture.Core.Model;
 using StepCapture.Core.Storage;
@@ -47,7 +48,27 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnSave(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
         Drop += OnFileDrop;
 
+        ThemeManager.Changed += UpdateThemeToggle;
+        UpdateThemeToggle();
         LoadGuide(new Guide(), null);
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        ThemeManager.ApplyTitleBar(this);
+    }
+
+    // ---------------- appearance ----------------
+
+    private void OnToggleTheme(object sender, RoutedEventArgs e) => ThemeManager.Toggle();
+
+    /// <summary>The pill names the mode it switches to, like "Light mode" while dark.</summary>
+    private void UpdateThemeToggle()
+    {
+        bool dark = ThemeManager.Current == AppTheme.Dark;
+        ThemeIcon.Text = dark ? "\u2600" : "\u263E"; // sun / moon
+        ThemeLabel.Text = dark ? "Light mode" : "Dark mode";
     }
 
     // ---------------- guide state ----------------
@@ -83,7 +104,8 @@ public partial class MainWindow : Window
         _dirty = dirty;
         string name = _filePath is null ? "Unsaved guide" : Path.GetFileName(_filePath);
         Title = $"{(dirty ? "• " : "")}{name} - StepCapture";
-        StatusText.Text = _steps.Count == 0 ? "" : $"{_steps.Count} steps{(dirty ? " · unsaved changes" : "")}";
+        StatusText.Text = dirty && _steps.Count > 0 ? "Unsaved changes" : "";
+        SectionTitle.Text = _steps.Count == 0 ? "STEPS" : $"STEPS  ·  {_steps.Count}";
     }
 
     private void Renumber()
@@ -105,7 +127,7 @@ public partial class MainWindow : Window
     {
         DetailPane.DataContext = Selected;
         ClearSelection();
-        if (Selected is { } s) StepHeader.Text = $"Step {s.Number} of {_steps.Count}";
+        if (Selected is { } s) StepHeader.Text = $"STEP {s.Number} OF {_steps.Count}";
         UpdateViewState();
     }
 
@@ -256,7 +278,7 @@ public partial class MainWindow : Window
         _steps.Move(from, to);
         StepList.SelectedItem = item;
         StepList.ScrollIntoView(item);
-        StepHeader.Text = $"Step {item.Number} of {_steps.Count}";
+        StepHeader.Text = $"STEP {item.Number} OF {_steps.Count}";
         SetDirty(true);
     }
 
