@@ -24,8 +24,20 @@ public sealed class Step
 
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.Now;
 
-    /// <summary>Annotated PNG screenshot, or null for a text-only step.</summary>
+    /// <summary>
+    /// The screenshot as it appears in exports: <see cref="BaseImagePng"/> with <see cref="Markup"/> drawn on top.
+    /// Null for a text-only step.
+    /// </summary>
     public byte[]? ImagePng { get; set; }
+
+    /// <summary>
+    /// The screenshot without the editable markup, or null when there is no markup
+    /// (then <see cref="ImagePng"/> is the plain screenshot).
+    /// </summary>
+    public byte[]? BaseImagePng { get; set; }
+
+    /// <summary>Editable shapes drawn on the screenshot (arrows, boxes, text...).</summary>
+    public List<MarkupItem> Markup { get; set; } = new();
 
     public Step Clone() => new()
     {
@@ -36,5 +48,7 @@ public sealed class Step
         AppName = AppName,
         Timestamp = Timestamp,
         ImagePng = ImagePng,
+        BaseImagePng = BaseImagePng,
+        Markup = Markup.Select(m => m.Clone()).ToList(),
     };
 }

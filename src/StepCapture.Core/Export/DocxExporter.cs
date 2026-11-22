@@ -12,26 +12,27 @@ namespace StepCapture.Core.Export;
 public sealed class DocxExporter : IGuideExporter
 {
     private const long EmuPerPixel = 9525;           // at 96 DPI
-    private const long MaxImageWidthEmu = 6L * 914400; // 6 inches, fits Letter and A4 with 1" margins
-    private const long MaxImageHeightEmu = 7L * 914400;
+    private const long EmuPerTwip = 635;
 
     public string Name => "Word document";
     public string Extension => ".docx";
 
-    public void Export(Guide guide, string path)
+    public void Export(Guide guide, string path, ExportOptions? options = null)
     {
-        using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
-        var main = doc.AddMainDocumentPart();
-        main.Document = new Document(new Body());
+        var letterhead = options?.Letterhead;
+        using var doc = letterhead is null ? CreateBlank(path) : CreateFromTemplate(letterhead.TemplatePath, path);
+        var main = doc.MainDocumentPart!;
         var body = main.Document.Body!;
+        var section = body.Elements<SectionProperties>().Last();
+        var (maxWidth, maxHeight) = ImageArea(section);
 
-        body.Append(TextParagraph(guide.Title, sizeHalfPoints: 40, bold: true, spacingAfter: 120));
-        body.Append(TextParagraph($"{guide.Steps.Count} steps · {guide.Created:MMMM d, yyyy}",
+        section.InsertBeforeSelf(TextParagraph(guide.Title, sizeHalfPoints: 40, bold: true, spacingAfter: 120));
+        section.InsertBeforeSelf(TextParagraph($"{guide.Steps.Count} steps · {guide.Created:MMMM d, yyyy}",
             sizeHalfPoints: 20, color: "5B6475", spacingAfter: 240));
         if (!string.IsNullOrWhiteSpace(guide.Description))
-            body.Append(TextParagraph(guide.Description.Trim(), spacingAfter: 240));
+            section.InsertBeforeSelf(TextParagraph(guide.Description.Trim(), spacingAfter: 240));
 
-        uint imageId = 1;
+        uint imageId = 1000; // clear of ids used by pictures in a letterhead header
         int n = 0;
         foreach (var step in guide.Steps)
         {
@@ -40,19 +41,59 @@ public sealed class DocxExporter : IGuideExporter
                 new ParagraphProperties(new KeepNext(), new SpacingBetweenLines { Before = "240", After = "80" }),
                 Run($"{n}. ", bold: true, color: "E8590C", sizeHalfPoints: 26),
                 Run(step.Caption, bold: true, sizeHalfPoints: 24));
-            body.Append(caption);
+            section.InsertBeforeSelf(caption);
 
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                body.Append(TextParagraph(step.Notes.Trim(), color: "5B6475", spacingAfter: 80, keepNext: step.ImagePng is not null));
+                section.InsertBeforeSelf(TextParagraph(step.Notes.Trim(), color: "5B6475", spacingAfter: 80, keepNext: step.ImagePng is not null));
 
             if (step.ImagePng is { Length: > 0 } png)
-                body.Append(ImageParagraph(main, png, imageId++, $"Step {n}"));
+                section.InsertBeforeSelf(ImageParagraph(main, png, imageId++, $"Step {n}", maxWidth, maxHeight));
         }
 
-        body.Append(new SectionProperties(
-            new PageSize { Width = 12240, Height = 15840 },             // US Letter
-            new PageMargin { Top = 1440, Bottom = 1440, Left = 1440, Right = 1440, Header = 720, Footer = 720 }));
         main.Document.Save();
+    }
+
+    private static WordprocessingDocument CreateBlank(string path)
+    {
+        var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
+        var main = doc.AddMainDocumentPart();
+        main.Document = new Document(new Body(new SectionProperties(
+            new PageSize { Width = 12240, Height = 15840 },             // US Letter
+            new PageMargin { Top = 1440, Bottom = 1440, Left = 1440, Right = 1440, Header = 720, Footer = 720 })));
+        return doc;
+    }
+
+    /// <summary>Starts from a copy of the letterhead template: keeps its header, footer, margins and styles, drops its body text.</summary>
+    private static WordprocessingDocument CreateFromTemplate(string templatePath, string path)
+    {
+        File.Copy(templatePath, path, overwrite: true);
+        File.SetAttributes(path, FileAttributes.Normal);
+        var doc = WordprocessingDocument.Open(path, true);
+        if (doc.DocumentType != WordprocessingDocumentType.Document)
+            doc.ChangeDocumentType(WordprocessingDocumentType.Document); // .dotx -> .docx
+
+        var main = doc.MainDocumentPart ?? throw new InvalidDataException("The letterhead template has no document body.");
+        main.Document ??= new Document(new Body());
+        var body = main.Document.Body ??= new Body();
+        var section = body.Elements<SectionProperties>().LastOrDefault();
+        foreach (var child in body.ChildElements.ToList())
+            if (child != section) child.Remove();
+        if (section is null) body.Append(new SectionProperties(new PageSize { Width = 12240, Height = 15840 },
+            new PageMargin { Top = 1440, Bottom = 1440, Left = 1440, Right = 1440, Header = 720, Footer = 720 }));
+        return doc;
+    }
+
+    /// <summary>Largest picture that fits between the page margins, in EMU.</summary>
+    private static (long Width, long Height) ImageArea(SectionProperties section)
+    {
+        var size = section.GetFirstChild<PageSize>();
+        var margin = section.GetFirstChild<PageMargin>();
+        long pageW = size?.Width?.Value ?? 12240, pageH = size?.Height?.Value ?? 15840;
+        long left = margin?.Left?.Value ?? 1440, right = margin?.Right?.Value ?? 1440;
+        long top = margin?.Top?.Value ?? 1440, bottom = margin?.Bottom?.Value ?? 1440;
+        long width = Math.Max(1440, pageW - left - right) * EmuPerTwip;
+        long height = (long)(Math.Max(2880, pageH - Math.Abs(top) - Math.Abs(bottom)) * EmuPerTwip * 0.8); // room for the caption
+        return (width, height);
     }
 
     private static Run Run(string text, bool bold = false, string? color = null, int? sizeHalfPoints = null)
@@ -81,7 +122,7 @@ public sealed class DocxExporter : IGuideExporter
         return new Paragraph(pp, Run(text, bold, color, sizeHalfPoints));
     }
 
-    private static Paragraph ImageParagraph(MainDocumentPart main, byte[] png, uint id, string name)
+    private static Paragraph ImageParagraph(MainDocumentPart main, byte[] png, uint id, string name, long maxWidth, long maxHeight)
     {
         var imagePart = main.AddImagePart(ImagePartType.Png);
         using (var ms = new MemoryStream(png)) imagePart.FeedData(ms);
@@ -89,7 +130,7 @@ public sealed class DocxExporter : IGuideExporter
 
         var (wPx, hPx) = PngInfo.GetSize(png);
         long cx = wPx * EmuPerPixel, cy = hPx * EmuPerPixel;
-        double scale = Math.Min(1.0, Math.Min((double)MaxImageWidthEmu / cx, (double)MaxImageHeightEmu / cy));
+        double scale = Math.Min(1.0, Math.Min((double)maxWidth / cx, (double)maxHeight / cy));
         cx = (long)(cx * scale);
         cy = (long)(cy * scale);
 

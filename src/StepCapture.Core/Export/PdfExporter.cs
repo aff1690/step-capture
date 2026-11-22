@@ -14,7 +14,7 @@ public sealed class PdfExporter : IGuideExporter
     public string Name => "PDF";
     public string Extension => ".pdf";
 
-    public void Export(Guide guide, string path)
+    public void Export(Guide guide, string path, ExportOptions? options = null)
     {
         GuideFontResolver.EnsureInstalled();
 
@@ -31,7 +31,7 @@ public sealed class PdfExporter : IGuideExporter
         var muted = new XSolidBrush(XColor.FromArgb(0x5B, 0x64, 0x75));
         var border = new XPen(XColor.FromArgb(0xD0, 0xD4, 0xDC), 0.75);
 
-        var page = new PageCursor(doc);
+        var page = new PageCursor(doc, options?.Letterhead);
         double width = page.ContentWidth;
 
         page.DrawLines(Wrap(page.Gfx, guide.Title, titleFont, width), titleFont, XBrushes.Black, 28);
@@ -135,26 +135,34 @@ public sealed class PdfExporter : IGuideExporter
         return result;
     }
 
-    /// <summary>Tracks the current page and vertical position, adding pages as needed.</summary>
+    /// <summary>Tracks the current page and vertical position, adding pages as needed, and draws the letterhead.</summary>
     private sealed class PageCursor
     {
+        private const double LetterheadEdge = 36; // header/footer distance from the page edge (0.5 inch)
         private readonly PdfDocument _doc;
+        private readonly Letterhead? _letterhead;
+        private readonly XImage? _banner;
+        private readonly XFont _footerFont = new(Family, 8.5, XFontStyleEx.Regular);
+        private readonly XBrush _footerBrush = new XSolidBrush(XColor.FromArgb(0x5B, 0x64, 0x75));
         public XGraphics Gfx { get; private set; } = null!;
         public double Y { get; set; }
         public double Left => Margin;
         public double ContentWidth { get; private set; }
         public double ContentHeight { get; private set; }
-        private double _bottom;
+        private double _top, _bottom;
 
-        public PageCursor(PdfDocument doc)
+        public PageCursor(PdfDocument doc, Letterhead? letterhead)
         {
             _doc = doc;
+            _letterhead = letterhead;
+            if (letterhead?.HeaderImage is { Length: > 0 } bytes)
+                _banner = XImage.FromStream(new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true));
             NewPage();
         }
 
         public void EnsureSpace(double height)
         {
-            if (Y + height > _bottom && Y > Margin + 1) NewPage();
+            if (Y + height > _bottom && Y > _top + 1) NewPage();
         }
 
         public void DrawLines(IEnumerable<string> lines, XFont font, XBrush brush, double lineHeight)
@@ -173,12 +181,39 @@ public sealed class PdfExporter : IGuideExporter
             var page = _doc.AddPage();
             page.Size = PageSize.Letter;
             Gfx = XGraphics.FromPdfPage(page);
-            ContentWidth = page.Width.Point - 2 * Margin;
-            ContentHeight = page.Height.Point - 2 * Margin;
-            _bottom = page.Height.Point - Margin;
-            Y = Margin;
+            double pageW = page.Width.Point, pageH = page.Height.Point;
+            ContentWidth = pageW - 2 * Margin;
+            _top = Margin;
+            _bottom = pageH - Margin;
+
+            if (_banner is not null)
+            {
+                // Same width as in the Word template, capped to the content width.
+                double w = _letterhead!.HeaderImageWidth > 0 ? Math.Min(_letterhead.HeaderImageWidth, ContentWidth) : ContentWidth;
+                double h = w * _banner.PixelHeight / _banner.PixelWidth;
+                Gfx.DrawImage(_banner, (pageW - w) / 2, LetterheadEdge, w, h);
+                _top = Math.Max(Margin, LetterheadEdge + h + 18);
+            }
+            if (!string.IsNullOrWhiteSpace(_letterhead?.FooterText))
+            {
+                var lines = Wrap(Gfx, _letterhead.FooterText, _footerFont, ContentWidth);
+                double lineH = 11, y = pageH - LetterheadEdge - lines.Count * lineH;
+                foreach (var line in lines)
+                {
+                    Gfx.DrawString(line, _footerFont, _footerBrush, new XRect(Margin, y, ContentWidth, lineH), XStringFormats.TopCenter);
+                    y += lineH;
+                }
+                _bottom = Math.Min(_bottom, pageH - LetterheadEdge - lines.Count * lineH - 14);
+            }
+
+            ContentHeight = _bottom - _top;
+            Y = _top;
         }
 
-        public void Finish() => Gfx?.Dispose();
+        public void Finish()
+        {
+            Gfx?.Dispose();
+            _banner?.Dispose();
+        }
     }
 }
