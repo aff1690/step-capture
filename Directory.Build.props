@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Lets the Windows-only app project compile on Linux/macOS build machines too. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Version>0.1.0</Version>
+    <Company>StepCapture</Company>
+    <Product>StepCapture</Product>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,34 @@
+<Window x:Class="StepCapture.App.Views.RecordingBar"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StepCapture - Recording" SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ResizeMode="NoResize" ShowInTaskbar="True" ShowActivated="False"
+        FontFamily="Segoe UI" FontSize="13">
+    <Border Background="#1D2330" CornerRadius="10" Padding="14,8" Margin="8"
+            MouseLeftButtonDown="OnDrag" ToolTip="Drag to move">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" />
+        </Border.Effect>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="#FF4D4F" VerticalAlignment="Center">
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.3" Duration="0:0:0.8" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+            <StackPanel Margin="10,0,18,0" VerticalAlignment="Center">
+                <TextBlock x:Name="StatusText" Text="Recording" Foreground="White" FontWeight="SemiBold" />
+                <TextBlock x:Name="CountText" Text="0 steps" Foreground="#A9B1C2" FontSize="11" />
+            </StackPanel>
+            <Button x:Name="PauseButton" Content="Pause" Click="OnPause" Style="{StaticResource ToolButton}"
+                    Background="#2C3444" Foreground="White" BorderBrush="#3A4356" />
+            <Button Content="Stop" Click="OnStop" Style="{StaticResource AccentButton}" Margin="0" />
+        </StackPanel>
+    </Border>
+</Window>
