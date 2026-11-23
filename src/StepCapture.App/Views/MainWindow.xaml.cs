@@ -285,7 +285,8 @@ public partial class MainWindow : Window
     /// <summary>Markup tool shortcuts (A, R, T, Ctrl+Z...) when the user isn't typing in a text box.</summary>
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.FocusedElement is TextBox || _recorder is not null || Selected is null) return;
+        // Any text field (caption, notes, title) keeps its keys: TextBoxBase covers TextBox and the RichTextBox notes.
+        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase || _recorder is not null || Selected is null) return;
         if (Editor.HandleShortcut(e)) e.Handled = true;
     }
 
