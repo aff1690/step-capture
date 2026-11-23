@@ -9,10 +9,15 @@ public sealed record RichSpan(string Text, bool Bold = false, bool Italic = fals
     public bool SameFormat(RichSpan o) => Bold == o.Bold && Italic == o.Italic && Underline == o.Underline;
 }
 
-/// <summary>One line of a note: an indent level and formatted spans.</summary>
+public enum ListKind { None, Bullet, Numbered }
+
+/// <summary>One line of a note: an indent level, an optional list marker and formatted spans.</summary>
 public sealed class RichLine
 {
     public int Indent { get; set; }
+
+    /// <summary>Bulleted or numbered list item. Numbers are worked out from the order (see <see cref="RichText.ListLabels"/>).</summary>
+    public ListKind List { get; set; }
     public List<RichSpan> Spans { get; set; } = new();
 
     public string PlainText => string.Concat(Spans.Select(s => s.Text));
@@ -23,6 +28,8 @@ public sealed class RichLine
 /// Step notes are stored as plain text with a small markup, so old guides and the Markdown export stay readable:
 /// each line is a paragraph, leading tabs are indent levels, and **bold**, *italic* and __underline__ mark
 /// formatting. A backslash escapes a marker character. Unmatched markers are kept as ordinary text.
+/// A line starting with "- " is a bullet and one starting with "1. " (any number) a numbered list item;
+/// the tabs before it set the list level.
 /// </summary>
 public static partial class RichText
 {
@@ -42,7 +49,11 @@ public static partial class RichText
                 else break;
             }
             indent += (spaces + 3) / 4; // older notes indented with spaces: 1-4 spaces = one level
-            lines.Add(new RichLine { Indent = Math.Min(indent, MaxIndent), Spans = ParseInline(raw[i..]) });
+            string rest = raw[i..];
+            var list = ListKind.None;
+            if (rest.StartsWith("- ") || rest == "-") { list = ListKind.Bullet; rest = rest.Length > 2 ? rest[2..] : ""; }
+            else if (ListNumberRegex().Match(rest) is { Success: true } m) { list = ListKind.Numbered; rest = rest[m.Length..]; }
+            lines.Add(new RichLine { Indent = Math.Min(indent, MaxIndent), List = list, Spans = ParseInline(rest) });
         }
         if (!trimBlankEdges) return lines;
         // Drop blank lines at the very start and end (like the old Trim()).
@@ -59,7 +70,7 @@ public static partial class RichText
         for (int i = 0; i < s.Length; i++)
         {
             char c = s[i];
-            if (c == '\\' && i + 1 < s.Length && s[i + 1] is '*' or '_' or '\\')
+            if (c == '\\' && i + 1 < s.Length && s[i + 1] is '*' or '_' or '\\' or '-' or '.' or ')')
             {
                 buf.Append(s[++i]);
                 continue;
@@ -104,8 +115,77 @@ public static partial class RichText
         else spans.Add(span);
     }
 
-    public static string Serialize(IEnumerable<RichLine> lines) =>
-        string.Join("\n", lines.Select(l => new string('\t', Math.Clamp(l.Indent, 0, MaxIndent)) + SerializeInline(l.Spans)));
+    public static string Serialize(IEnumerable<RichLine> lines)
+    {
+        var list = lines.ToList();
+        var labels = ListLabels(list, markdownStyle: true);
+        return string.Join("\n", list.Select((l, i) =>
+            new string('\t', Math.Clamp(l.Indent, 0, MaxIndent))
+            + (l.List == ListKind.None ? EscapeLineStart(SerializeInline(l.Spans)) : labels[i] + " " + SerializeInline(l.Spans))));
+    }
+
+    /// <summary>Plain text that would read as a list marker gets escaped so it stays plain text.</summary>
+    private static string EscapeLineStart(string s) =>
+        s.StartsWith("- ") || s == "-" ? "\\" + s : ListNumberRegex().IsMatch(s) ? Regex.Replace(s, @"^(\d+)([.)])", "$1\\$2") : s;
+
+    private static readonly string[] Bullets = { "•", "◦", "▪" };
+
+    /// <summary>
+    /// The marker shown before each list line: numbered levels go 1. → a. → i. → 1. ..., bullets • → ◦ → ▪.
+    /// Numbering continues across blank lines and deeper items, and restarts after a plain line at the
+    /// same or a shallower level. Empty for lines that aren't list items.
+    /// </summary>
+    /// <param name="markdownStyle">"1." and "-" at every level, for storage and Markdown.</param>
+    public static List<string> ListLabels(IReadOnlyList<RichLine> lines, bool markdownStyle = false)
+    {
+        var counters = new int[MaxIndent + 2];
+        var labels = new List<string>(lines.Count);
+        foreach (var line in lines)
+        {
+            int level = Math.Clamp(line.Indent, 0, MaxIndent);
+            if (line.List == ListKind.None)
+            {
+                if (!line.IsEmpty) for (int k = level; k < counters.Length; k++) counters[k] = 0;
+                labels.Add("");
+                continue;
+            }
+            for (int k = level + 1; k < counters.Length; k++) counters[k] = 0;
+            if (line.List == ListKind.Bullet)
+            {
+                counters[level] = 0;
+                labels.Add(markdownStyle ? "-" : Bullets[level % Bullets.Length]);
+                continue;
+            }
+            int n = ++counters[level];
+            labels.Add(markdownStyle ? $"{n}." : NumberLabel(n, level) + ".");
+        }
+        return labels;
+    }
+
+    /// <summary>The list marker style for a nesting depth: 0 numbers, 1 letters, 2 roman numerals, then repeat.</summary>
+    public static string NumberLabel(int n, int level) => (level % 3) switch
+    {
+        1 => Letters(n),
+        2 => Roman(n),
+        _ => n.ToString(),
+    };
+
+    private static string Letters(int n)
+    {
+        var sb = new StringBuilder();
+        for (; n > 0; n = (n - 1) / 26) sb.Insert(0, (char)('a' + (n - 1) % 26));
+        return sb.ToString();
+    }
+
+    private static string Roman(int n)
+    {
+        if (n <= 0 || n >= 4000) return n.ToString();
+        var map = new (int V, string S)[] { (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"),
+            (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i") };
+        var sb = new StringBuilder();
+        foreach (var (v, sym) in map) for (; n >= v; n -= v) sb.Append(sym);
+        return sb.ToString();
+    }
 
     private static string SerializeInline(IEnumerable<RichSpan> spans)
     {
@@ -130,40 +210,10 @@ public static partial class RichText
 
     /// <summary>Plain text without markup, indented with tabs (for search, tooltips and tests).</summary>
     public static string ToPlain(string? text) =>
-        string.Join("\n", Parse(text).Select(l => new string('\t', l.Indent) + l.PlainText));
+        string.Join("\n", Parse(text).Select(l => new string('\t', l.Indent) + (l.List == ListKind.Bullet ? "- " : l.List == ListKind.Numbered ? "# " : "") + l.PlainText));
 
-    /// <summary>
-    /// If the line starts with a number such as "2." or "2)", returns it and the line with the number removed.
-    /// Used to show numbered notes with the same badge as the matching callout on the screenshot.
-    /// </summary>
-    public static bool TryLeadingNumber(RichLine line, out int number, out RichLine rest)
-    {
-        number = 0;
-        rest = line;
-        if (line.Spans.Count == 0) return false;
-        var m = LeadingNumberRegex().Match(line.Spans[0].Text);
-        if (!m.Success || !int.TryParse(m.Groups[1].Value, out number)) return false;
-        var spans = new List<RichSpan>(line.Spans);
-        spans[0] = spans[0] with { Text = spans[0].Text[m.Length..] };
-        if (spans[0].Text.Length == 0) spans.RemoveAt(0);
-        rest = new RichLine { Indent = line.Indent, Spans = spans };
-        return true;
-    }
-
-    [GeneratedRegex(@"^\s*(\d{1,3})[.)](\s+|$)")]
-    private static partial Regex LeadingNumberRegex();
-
-    /// <summary>
-    /// Adds a "n. " line for a new numbered callout unless the notes already have one, so the
-    /// description of each callout only needs typing in.
-    /// </summary>
-    public static string EnsureNumberedLine(string? notes, int number)
-    {
-        var lines = Parse(notes);
-        if (lines.Any(l => TryLeadingNumber(l, out int n, out _) && n == number)) return notes ?? "";
-        string trimmed = (notes ?? "").TrimEnd('\n', '\r', ' ', '\t');
-        return (trimmed.Length == 0 ? "" : trimmed + "\n") + $"{number}. ";
-    }
+    [GeneratedRegex(@"^\d{1,4}[.)](\s|$)")]
+    private static partial Regex ListNumberRegex();
 
     /// <summary>Callout colors on a step's screenshot by number (the first callout with each number wins).</summary>
     public static Dictionary<int, uint> CalloutColors(Step step)

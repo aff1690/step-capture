@@ -31,10 +31,7 @@ public sealed class MarkdownExporter : IGuideExporter
             else sb.Append(n).Append(". ").Append(EscapeInline(step.Caption)).Append('\n');
             if (!string.IsNullOrWhiteSpace(step.Notes))
             {
-                // Two trailing spaces keep each note line on its own line in Markdown viewers.
-                var noteLines = RichText.Parse(step.Notes)
-                    .Select(l => indent + new string(' ', l.Indent * 4) + InlineMarkdown(l.Spans));
-                sb.Append('\n').Append(string.Join("  \n", noteLines)).Append('\n');
+                sb.Append('\n').Append(RichMarkdown(step.Notes, indent)).Append('\n');
             }
             if (step.ImagePng is { Length: > 0 } png)
             {
@@ -44,10 +41,28 @@ public sealed class MarkdownExporter : IGuideExporter
                 string alt = n is null ? EscapeInline(step.Caption) : $"Step {n}";
                 sb.Append('\n').Append($"{indent}![{alt}]({Uri.EscapeDataString(imageFolderName)}/{file})").Append('\n');
             }
+            foreach (var (note, number, _) in CalloutNotes.ForExport(step))
+            {
+                sb.Append('\n').Append(indent).Append($"**({number})** ").Append(EscapeInline(note.Title)).Append('\n');
+                if (!string.IsNullOrWhiteSpace(note.Details))
+                    sb.Append('\n').Append(RichMarkdown(note.Details, indent + "    ")).Append('\n');
+            }
             sb.Append('\n');
         }
 
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+    }
+
+    /// <summary>
+    /// Formatted text as Markdown lines. List items become "1." / "-" items nested by 4 spaces per level;
+    /// two trailing spaces keep other lines on their own line in Markdown viewers.
+    /// </summary>
+    private static string RichMarkdown(string? text, string indent)
+    {
+        var lines = RichText.Parse(text);
+        var labels = RichText.ListLabels(lines, markdownStyle: true);
+        return string.Join("  \n", lines.Select((l, i) =>
+            indent + new string(' ', l.Indent * 4) + (l.List == ListKind.None ? "" : labels[i] + " ") + InlineMarkdown(l.Spans)));
     }
 
     /// <summary>Bold and italic as Markdown; underline has no Markdown syntax, so it uses &lt;u&gt;.</summary>

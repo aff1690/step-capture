@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -18,7 +19,43 @@ public sealed class StepItem : INotifyPropertyChanged
     private ImageSource? _image, _thumbnail, _baseImage;
     private int _number;
 
-    public StepItem(Step model) => Model = model;
+    public StepItem(Step model)
+    {
+        Model = model;
+        RefreshCalloutNotes();
+    }
+
+    /// <summary>The titled note for each numbered callout, in callout order (editable in the details pane).</summary>
+    public ObservableCollection<CalloutNoteItem> CalloutNoteItems { get; } = new();
+
+    public bool HasCalloutNotes => CalloutNoteItems.Count > 0;
+
+    /// <summary>Adds notes for new callouts, renumbers, and drops empty notes whose callout was deleted.</summary>
+    public void RefreshCalloutNotes()
+    {
+        CalloutNotes.Sync(Model);
+        var ordered = CalloutNotes.Ordered(Model);
+        // Reuse wrappers so a note box being typed in isn't recreated.
+        var existing = CalloutNoteItems.ToDictionary(i => i.Note);
+        var items = ordered.Select(o =>
+        {
+            var item = existing.TryGetValue(o.Note, out var e) ? e : new CalloutNoteItem(o.Note);
+            item.Update(o.Number, o.Color);
+            return item;
+        }).ToList();
+        if (!items.SequenceEqual(CalloutNoteItems))
+        {
+            CalloutNoteItems.Clear();
+            foreach (var i in items) CalloutNoteItems.Add(i);
+        }
+        OnChanged(nameof(HasCalloutNotes));
+    }
+
+    public void RemoveCalloutNote(CalloutNoteItem item)
+    {
+        Model.CalloutNotes.Remove(item.Note);
+        RefreshCalloutNotes();
+    }
 
     public Step Model { get; }
 
@@ -122,6 +159,7 @@ public sealed class StepItem : INotifyPropertyChanged
         }
         _image = _thumbnail = null;
         NotifyImages();
+        RefreshCalloutNotes();
     }
 
     /// <summary>Replaces the screenshot underneath the markup (blur, crop) or removes it (null).</summary>
@@ -150,6 +188,7 @@ public sealed class StepItem : INotifyPropertyChanged
         Model.Markup = s.Markup;
         _image = _thumbnail = _baseImage = null;
         NotifyImages();
+        RefreshCalloutNotes();
     }
 
     /// <summary>Re-reads the model after the recorder changed it.</summary>
@@ -182,6 +221,52 @@ public sealed class StepItem : INotifyPropertyChanged
         bmp.Freeze();
         return bmp;
     }
+
+    private void OnChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+/// <summary>Bindable wrapper for one callout note: badge, editable title and details.</summary>
+public sealed class CalloutNoteItem : INotifyPropertyChanged
+{
+    private int? _number;
+    private uint _color;
+
+    public CalloutNoteItem(CalloutNote note) => Note = note;
+
+    public CalloutNote Note { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public void Update(int? number, uint color)
+    {
+        if (_number == number && _color == color) return;
+        _number = number;
+        _color = color;
+        foreach (var n in new[] { nameof(BadgeText), nameof(BadgeBrush), nameof(BadgeForeground), nameof(IsOrphan), nameof(TitleHint) })
+            OnChanged(n);
+    }
+
+    /// <summary>True when the callout this note belongs to was deleted (Undo brings it back).</summary>
+    public bool IsOrphan => _number is null;
+    public string BadgeText => _number?.ToString() ?? "?";
+    public Brush BadgeBrush => Freeze(new SolidColorBrush(MarkupRenderer.ToColor(_color)));
+    public Brush BadgeForeground => MarkupGeometry.IsLight(_color) ? Brushes.Black : Brushes.White;
+    public string TitleHint => IsOrphan ? "Its callout was deleted. Undo to bring it back, or remove this note." : $"Note {_number} title";
+
+    public string Title
+    {
+        get => Note.Title;
+        set { if (Note.Title != value) { Note.Title = value; OnChanged(); } }
+    }
+
+    public string Details
+    {
+        get => Note.Details;
+        set { if (Note.Details != value) { Note.Details = value; OnChanged(); } }
+    }
+
+    private static Brush Freeze(Brush b) { b.Freeze(); return b; }
 
     private void OnChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

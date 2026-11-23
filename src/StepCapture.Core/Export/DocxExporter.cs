@@ -27,7 +27,7 @@ public sealed class DocxExporter : IGuideExporter
         var (maxWidth, maxHeight) = ImageArea(section);
 
         section.InsertBeforeSelf(TextParagraph(guide.Title, sizeHalfPoints: 40, bold: true, spacingAfter: 120));
-        section.InsertBeforeSelf(TextParagraph($"{guide.StepCountText} · {guide.Created:MMMM d, yyyy}",
+        section.InsertBeforeSelf(TextParagraph(guide.MetaLine,
             sizeHalfPoints: 20, color: "5B6475", spacingAfter: 240));
         if (!string.IsNullOrWhiteSpace(guide.Description))
             section.InsertBeforeSelf(TextParagraph(guide.Description.Trim(), spacingAfter: 240));
@@ -50,11 +50,14 @@ public sealed class DocxExporter : IGuideExporter
             section.InsertBeforeSelf(caption);
 
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                foreach (var p in NoteParagraphs(step, keepWithImage: step.ImagePng is not null))
+                foreach (var p in RichParagraphs(step.Notes, 0, keepWithNext: step.ImagePng is not null))
                     section.InsertBeforeSelf(p);
 
             if (step.ImagePng is { Length: > 0 } png)
                 section.InsertBeforeSelf(ImageParagraph(main, png, imageId++, n is null ? "Overview" : $"Step {n}", maxWidth, maxHeight));
+
+            foreach (var p in CalloutParagraphs(step))
+                section.InsertBeforeSelf(p);
         }
 
         main.Document.Save();
@@ -104,34 +107,59 @@ public sealed class DocxExporter : IGuideExporter
     }
 
     /// <summary>
-    /// One paragraph per note line, indented by level, with bold/italic/underline. A line starting with the
-    /// number of a callout on the screenshot gets that number as a circled badge in the callout's color.
+    /// One paragraph per note line, indented by level, with bold/italic/underline. List items hang:
+    /// the marker (1. a. i. or • ◦ ▪) sits in the indent and wrapped lines align with the text.
     /// </summary>
-    private static IEnumerable<Paragraph> NoteParagraphs(Step step, bool keepWithImage)
+    private static IEnumerable<Paragraph> RichParagraphs(string? text, int baseIndentTwips, bool keepWithNext, string color = "5B6475")
     {
-        var colors = RichText.CalloutColors(step);
-        var lines = RichText.Parse(step.Notes);
+        var lines = RichText.Parse(text);
+        var labels = RichText.ListLabels(lines);
         for (int i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
+            bool item = line.List != ListKind.None;
             var pp = new ParagraphProperties();
-            if (keepWithImage || i < lines.Count - 1) pp.Append(new KeepNext());
+            if (keepWithNext || i < lines.Count - 1) pp.Append(new KeepNext());
+            if (item) pp.Append(new Tabs(new TabStop { Val = TabStopValues.Left, Position = baseIndentTwips + (line.Indent + 1) * 360 }));
             pp.Append(new SpacingBetweenLines { After = i == lines.Count - 1 ? "80" : "0" });
-            if (line.Indent > 0) pp.Append(new Indentation { Left = (line.Indent * 360).ToString() });
+            int left = baseIndentTwips + (line.Indent + (item ? 1 : 0)) * 360;
+            if (left > 0 || item)
+                pp.Append(item ? new Indentation { Left = left.ToString(), Hanging = "360" } : new Indentation { Left = left.ToString() });
             var para = new Paragraph(pp);
-
-            var content = line;
-            if (RichText.TryLeadingNumber(line, out int n, out var rest) && colors.TryGetValue(n, out uint argb))
+            if (item)
             {
-                content = rest;
-                string badge = n is >= 1 and <= 20 ? ((char)(0x2460 + n - 1)).ToString() : $"({n})";
-                var r = Run(badge + " ", bold: true, color: $"{argb & 0xFFFFFF:X6}", sizeHalfPoints: 26);
-                r.RunProperties!.RunFonts = new RunFonts { Ascii = "Segoe UI Symbol", HighAnsi = "Segoe UI Symbol", ComplexScript = "Segoe UI Symbol" };
-                para.Append(r);
+                var marker = Run(labels[i], color: color);
+                marker.Append(new TabChar());
+                para.Append(marker);
             }
-            foreach (var span in content.Spans)
-                para.Append(Run(span.Text, span.Bold, "5B6475", italic: span.Italic, underline: span.Underline));
+            foreach (var span in line.Spans)
+                para.Append(Run(span.Text, span.Bold, color, italic: span.Italic, underline: span.Underline));
             yield return para;
+        }
+    }
+
+    /// <summary>Callout notes under the screenshot: circled number in the callout's color, bold title, details.</summary>
+    private static IEnumerable<Paragraph> CalloutParagraphs(Step step)
+    {
+        var notes = CalloutNotes.ForExport(step);
+        for (int k = 0; k < notes.Count; k++)
+        {
+            var (note, number, argb) = notes[k];
+            int n = number!.Value;
+            string badge = n is >= 1 and <= 20 ? ((char)(0x2460 + n - 1)).ToString() : $"({n})";
+            bool hasDetails = !string.IsNullOrWhiteSpace(note.Details);
+            var tp = new ParagraphProperties();
+            if (hasDetails) tp.Append(new KeepNext());
+            tp.Append(new SpacingBetweenLines { Before = k == 0 ? "120" : "60", After = hasDetails ? "20" : "60" });
+            var title = new Paragraph(tp);
+            var r = Run(badge + " ", bold: true, color: $"{argb & 0xFFFFFF:X6}", sizeHalfPoints: 26);
+            r.RunProperties!.RunFonts = new RunFonts { Ascii = "Segoe UI Symbol", HighAnsi = "Segoe UI Symbol", ComplexScript = "Segoe UI Symbol" };
+            title.Append(r);
+            title.Append(Run(note.Title, bold: true, sizeHalfPoints: 22));
+            yield return title;
+            if (hasDetails)
+                foreach (var p in RichParagraphs(note.Details, 400, keepWithNext: false))
+                    yield return p;
         }
     }
 

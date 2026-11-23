@@ -13,15 +13,20 @@
                 <TextBlock Text="U" TextDecorations="Underline" />
             </Button>
             <Rectangle Width="1" Margin="4,3,8,3" Fill="{DynamicResource LineBrush}" />
+            <Button Style="{StaticResource FormatButton}" Click="OnBullets" ToolTip="Bulleted list (Ctrl+Shift+L). Tab makes a sub-level.">
+                <TextBlock Text="•≡" FontFamily="Segoe UI Symbol" />
+            </Button>
+            <Button Style="{StaticResource FormatButton}" Click="OnNumbering" ToolTip="Numbered list (Ctrl+Shift+N). Tab makes a sub-level: 1. a. i.">
+                <TextBlock Text="1≡" FontFamily="Segoe UI Symbol" FontSize="11" />
+            </Button>
+            <Rectangle Width="1" Margin="4,3,8,3" Fill="{DynamicResource LineBrush}" />
             <Button Style="{StaticResource FormatButton}" Click="OnOutdent" ToolTip="Decrease indent (Shift+Tab)">
                 <TextBlock Text="⇤" FontFamily="Segoe UI Symbol" />
             </Button>
             <Button Style="{StaticResource FormatButton}" Click="OnIndent" ToolTip="Increase indent (Tab)">
                 <TextBlock Text="⇥" FontFamily="Segoe UI Symbol" />
             </Button>
-            <TextBlock Text="Lines starting with 1. 2. 3. get the matching callout badge in exports."
-                       Foreground="{DynamicResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"
-                       TextTrimming="CharacterEllipsis" />
+
         </StackPanel>
         <RichTextBox x:Name="Box" AcceptsReturn="True" AcceptsTab="True" VerticalScrollBarVisibility="Auto"
                      MinHeight="46" TextChanged="OnTextChanged" PreviewKeyDown="OnPreviewKeyDown" />

@@ -25,10 +25,14 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
 - **Password safety**: typing into password fields is recorded only as "Type your password". The text is never stored.
 - **Editor**: rename the guide, edit captions, add notes, reorder (Ctrl+Up / Ctrl+Down), delete (Del),
   insert text-only steps, and blur or crop part of a screenshot.
-- **Formatted notes**: bold (Ctrl+B), italic (Ctrl+I), underline (Ctrl+U) and indent levels (Tab / Shift+Tab),
-  kept in every export.
-- **Callout notes**: each numbered callout you place adds a matching "1.", "2."... line to the step's notes, so
-  you only type the description. In exports, those lines get a round badge in the callout's color.
+- **Formatted notes**: bold (Ctrl+B), italic (Ctrl+I), underline (Ctrl+U), indents, and multi-level numbered
+  (Ctrl+Shift+N) and bulleted (Ctrl+Shift+L) lists. Tab nests a list item (1. → a. → i., • → ◦ → ▪). Kept in every export.
+  Spell check is on in every text field (right-click a misspelled word for suggestions).
+- **Callout notes**: each numbered callout you place gets its own note under the general notes, with an editable
+  title and formatted details. Notes stay linked to their callout when callouts are renumbered. In exports they appear
+  under the screenshot with a badge in the callout's color.
+- **Layout**: switch between stacked (details above the screenshot) and side by side (details left, screenshot right).
+  Drag the bar between them to resize. The Steps panel can be hidden with "Hide steps".
 - **Default save folder**: set it from the ⚙ button. Save, Open and Export dialogs start there.
 - **Screenshot markup**: draw arrows, lines, boxes, circles, freehand pen, highlighter, text and numbered
   callouts (1, 2, 3…) in eight colors and three sizes. Hold Shift for straight angles and perfect squares/circles.

@@ -23,6 +23,18 @@ internal sealed class AppSettings
     /// <summary>The default folder if it is set and still exists.</summary>
     public string? DefaultFolderIfExists => DefaultFolder is { } f && Directory.Exists(f) ? f : null;
 
+    /// <summary>Details beside the screenshot (true) or above it (false).</summary>
+    public bool SideBySide { get; set; }
+
+    /// <summary>Share of the width the details take in side-by-side layout.</summary>
+    public double SideDetailsRatio { get; set; } = 0.38;
+
+    /// <summary>Height of the details area above the screenshot in stacked layout.</summary>
+    public double StackedDetailsHeight { get; set; } = 300;
+
+    public bool StepsPanelCollapsed { get; set; }
+    public double StepsPanelWidth { get; set; } = 360;
+
     public static AppSettings Current { get; } = Load();
 
     private static AppSettings Load()

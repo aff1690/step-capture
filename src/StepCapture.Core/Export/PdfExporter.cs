@@ -36,7 +36,7 @@ public sealed class PdfExporter : IGuideExporter
         double width = page.ContentWidth;
 
         page.DrawLines(Wrap(page.Gfx, guide.Title, titleFont, width), titleFont, XBrushes.Black, 28);
-        page.DrawLines(new[] { $"{guide.StepCountText} · {guide.Created:MMMM d, yyyy}" }, metaFont, muted, 14);
+        page.DrawLines(new[] { guide.MetaLine }, metaFont, muted, 14);
         page.Y += 6;
         if (!string.IsNullOrWhiteSpace(guide.Description))
         {
@@ -57,7 +57,7 @@ public sealed class PdfExporter : IGuideExporter
             var captionLines = Wrap(page.Gfx, step.Caption, capFont, width - badge - gap);
             var noteLines = string.IsNullOrWhiteSpace(step.Notes)
                 ? new List<NoteRow>()
-                : LayoutNotes(page.Gfx, step, width - badge - gap);
+                : LayoutRich(page.Gfx, step.Notes, width - badge - gap);
 
             double textHeight = Math.Max(badge, captionLines.Count * capLine) + noteLines.Count * 15;
             XImage? image = null;
@@ -107,6 +107,30 @@ public sealed class PdfExporter : IGuideExporter
                 page.Y += imgH;
                 image.Dispose();
             }
+
+            // Callout notes under the screenshot, aligned with the caption; they may continue on the next page.
+            var callouts = CalloutNotes.ForExport(step);
+            if (callouts.Count > 0) page.Y += 8;
+            foreach (var (note, number, color) in callouts)
+            {
+                double w = width - badge - gap;
+                var titleRows = LayoutCalloutTitle(page.Gfx, note, number!.Value, color, w);
+                var detailRows = string.IsNullOrWhiteSpace(note.Details) ? new List<NoteRow>() : LayoutRich(page.Gfx, note.Details, w - CalloutDetailIndent);
+                page.EnsureSpace(4 + (titleRows.Count + Math.Min(1, detailRows.Count)) * NoteLineHeight); // keep the title with its first line
+                page.Y += 4;
+                foreach (var row in titleRows)
+                {
+                    page.EnsureSpace(NoteLineHeight);
+                    DrawNoteRow(page.Gfx, row, textX, page.Y, XBrushes.Black);
+                    page.Y += NoteLineHeight;
+                }
+                foreach (var row in detailRows)
+                {
+                    page.EnsureSpace(NoteLineHeight);
+                    DrawNoteRow(page.Gfx, row, textX + CalloutDetailIndent, page.Y, muted);
+                    page.Y += NoteLineHeight;
+                }
+            }
         }
 
         page.Finish();
@@ -115,11 +139,12 @@ public sealed class PdfExporter : IGuideExporter
 
     // ---------------- formatted notes ----------------
 
-    private const double NoteLineHeight = 15, NoteIndent = 18, NoteBadge = 15, NoteBadgeGap = 5;
+    private const double CalloutDetailIndent = 22;
+    private const double NoteLineHeight = 15, NoteIndent = 18, NoteListHang = 18, NoteBadge = 15, NoteBadgeGap = 5;
 
     private sealed record NoteFrag(string Text, XFont Font, bool Underline, double X, double Width);
 
-    private sealed record NoteRow(List<NoteFrag> Frags, double TextX, int? BadgeNumber, uint BadgeColor, double BadgeX);
+    private sealed record NoteRow(List<NoteFrag> Frags, double TextX, string? Label, int? BadgeNumber, uint BadgeColor, double BadgeX);
 
     private static readonly Dictionary<(bool, bool), XFont> NoteFonts = new();
 
@@ -143,35 +168,43 @@ public sealed class PdfExporter : IGuideExporter
     }
 
     /// <summary>
-    /// Wraps formatted note lines to a width. Indented lines start further right; a line that starts with
-    /// the number of a callout on the screenshot gets a round badge in the callout's color, and its wrapped
-    /// lines hang under the text rather than under the badge.
+    /// Wraps formatted note text to a width. Indented lines start further right; list items show their
+    /// marker (1. a. i. or • ◦ ▪) in the indent, and wrapped lines hang under the text.
     /// </summary>
-    private static List<NoteRow> LayoutNotes(XGraphics gfx, Step step, double width)
+    private static List<NoteRow> LayoutRich(XGraphics gfx, string? text, double width)
     {
         var rows = new List<NoteRow>();
-        var colors = RichText.CalloutColors(step);
-        foreach (var line in RichText.Parse(step.Notes))
+        var lines = RichText.Parse(text);
+        var labels = RichText.ListLabels(lines);
+        for (int i = 0; i < lines.Count; i++)
         {
+            var line = lines[i];
             double baseX = Math.Min(line.Indent * NoteIndent, width / 2);
-            var content = line;
-            int? badge = null;
-            uint badgeColor = 0;
-            if (RichText.TryLeadingNumber(line, out int n, out var rest) && colors.TryGetValue(n, out uint argb))
-            {
-                content = rest;
-                badge = n;
-                badgeColor = argb;
-            }
-            double textX = baseX + (badge is null ? 0 : NoteBadge + NoteBadgeGap);
-            double avail = Math.Max(40, width - textX);
+            bool item = line.List != ListKind.None;
+            LayoutLine(gfx, rows, line, baseX, baseX + (item ? NoteListHang : 0), item ? labels[i] : null, null, 0, width);
+        }
+        return rows;
+    }
 
+    /// <summary>A callout note's title row(s): round badge in the callout's color, then the bold title.</summary>
+    private static List<NoteRow> LayoutCalloutTitle(XGraphics gfx, CalloutNote note, int number, uint color, double width)
+    {
+        var rows = new List<NoteRow>();
+        var line = new RichLine { Spans = { new RichSpan(note.Title.Trim(), Bold: true) } };
+        LayoutLine(gfx, rows, line, 0, NoteBadge + NoteBadgeGap + 2, null, number, color, width);
+        return rows;
+    }
+
+    private static void LayoutLine(XGraphics gfx, List<NoteRow> rows, RichLine content, double baseX, double textX,
+        string? label, int? badge, uint badgeColor, double width)
+    {
+        double avail = Math.Max(40, width - textX);
             var frags = new List<NoteFrag>();
             double x = 0, pendingSpace = 0;
             bool first = true;
             void NewRow()
             {
-                rows.Add(new NoteRow(frags, textX, first ? badge : null, badgeColor, baseX));
+                rows.Add(new NoteRow(frags, textX, first ? label : null, first ? badge : null, badgeColor, baseX));
                 frags = new List<NoteFrag>();
                 x = 0;
                 pendingSpace = 0;
@@ -216,8 +249,6 @@ public sealed class PdfExporter : IGuideExporter
                 }
             }
             NewRow(); // also emits an empty row for a blank line
-        }
-        return rows;
     }
 
     private static void DrawNoteRow(XGraphics gfx, NoteRow row, double left, double y, XBrush brush)
@@ -226,13 +257,15 @@ public sealed class PdfExporter : IGuideExporter
         {
             var color = XColor.FromArgb(255, (int)((row.BadgeColor >> 16) & 0xFF), (int)((row.BadgeColor >> 8) & 0xFF), (int)(row.BadgeColor & 0xFF));
             double bx = left + row.BadgeX, by = y + (NoteLineHeight - NoteBadge) / 2;
-            string label = n.ToString();
-            var font = new XFont(Family, label.Length > 1 ? 7.5 : 8.5, XFontStyleEx.Bold);
-            double bw = Math.Max(NoteBadge, gfx.MeasureString(label, font).Width + 6);
+            string num = n.ToString();
+            var font = new XFont(Family, num.Length > 1 ? 7.5 : 8.5, XFontStyleEx.Bold);
+            double bw = Math.Max(NoteBadge, gfx.MeasureString(num, font).Width + 6);
             gfx.DrawRoundedRectangle(new XSolidBrush(color), bx, by, bw, NoteBadge, NoteBadge, NoteBadge);
-            gfx.DrawString(label, font, MarkupGeometry.IsLight(row.BadgeColor) ? XBrushes.Black : XBrushes.White,
+            gfx.DrawString(num, font, MarkupGeometry.IsLight(row.BadgeColor) ? XBrushes.Black : XBrushes.White,
                 new XRect(bx, by, bw, NoteBadge), XStringFormats.Center);
         }
+        if (row.Label is { } label)
+            gfx.DrawString(label, NoteFont(false, false), brush, new XRect(left + row.BadgeX, y, NoteListHang + 4, NoteLineHeight), XStringFormats.TopLeft);
         var pen = new XPen(((XSolidBrush)brush).Color, 0.6);
         foreach (var f in row.Frags)
         {
