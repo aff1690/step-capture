@@ -44,6 +44,9 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnWindowKeyDown;
         Drop += OnFileDrop;
 
+        ApplyLayout();
+        ApplyStepsPanel();
+
         ThemeManager.Changed += UpdateThemeToggle;
         UpdateThemeToggle();
         LoadGuide(new Guide(), null);
@@ -614,6 +617,119 @@ public partial class MainWindow : Window
         var choose = new MenuItem { Header = "      " + (hasTemplate ? "Change letterhead template…" : "Choose letterhead template…") };
         choose.Click += (_, _) => ChooseLetterhead();
         ExportMenu.Items.Add(choose);
+    }
+
+    // ---------------- layout ----------------
+
+    private void OnToggleLayout(object sender, RoutedEventArgs e)
+    {
+        AppSettings.Current.SideBySide = !AppSettings.Current.SideBySide;
+        AppSettings.Current.Save();
+        ApplyLayout();
+    }
+
+    /// <summary>
+    /// Stacked: details above the screenshot. Side by side: details on the left, screenshot on the right.
+    /// Either way a drag bar sits between them and its position is remembered.
+    /// </summary>
+    private void ApplyLayout()
+    {
+        var s = AppSettings.Current;
+        DetailContent.RowDefinitions.Clear();
+        DetailContent.ColumnDefinitions.Clear();
+        if (s.SideBySide)
+        {
+            double ratio = Math.Clamp(s.SideDetailsRatio, 0.15, 0.85);
+            DetailContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star), MinWidth = 260 });
+            DetailContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
+            DetailContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - ratio, GridUnitType.Star), MinWidth = 320 });
+            Place(DetailsScroll, 0, 0);
+            Place(DetailSplitter, 0, 1);
+            Place(Editor, 0, 2);
+            DetailSplitter.ResizeDirection = GridResizeDirection.Columns;
+            DetailSplitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            DetailSplitter.VerticalAlignment = VerticalAlignment.Stretch;
+            DetailSplitter.Width = double.NaN;
+            DetailSplitter.Height = double.NaN;
+            DetailSplitter.Padding = new Thickness(5, 0, 5, 0);
+            DetailSplitter.Cursor = Cursors.SizeWE;
+            Editor.Margin = new Thickness(0);
+            LayoutButton.Content = "Stacked view";
+            LayoutButton.ToolTip = "Put the details above the screenshot";
+        }
+        else
+        {
+            double h = Math.Max(120, s.StackedDetailsHeight);
+            DetailContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(h), MinHeight = 80 });
+            DetailContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(14) });
+            DetailContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 220 });
+            Place(DetailsScroll, 0, 0);
+            Place(DetailSplitter, 1, 0);
+            Place(Editor, 2, 0);
+            DetailSplitter.ResizeDirection = GridResizeDirection.Rows;
+            DetailSplitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            DetailSplitter.VerticalAlignment = VerticalAlignment.Stretch;
+            DetailSplitter.Width = double.NaN;
+            DetailSplitter.Height = double.NaN;
+            DetailSplitter.Padding = new Thickness(0, 5, 0, 5);
+            DetailSplitter.Cursor = Cursors.SizeNS;
+            Editor.Margin = new Thickness(0);
+            LayoutButton.Content = "Side-by-side view";
+            LayoutButton.ToolTip = "Put the details on the left and the screenshot on the right";
+        }
+    }
+
+    private static void Place(UIElement e, int row, int column)
+    {
+        Grid.SetRow(e, row);
+        Grid.SetColumn(e, column);
+    }
+
+    private void OnDetailSplitterDragged(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        var s = AppSettings.Current;
+        if (s.SideBySide)
+        {
+            double left = DetailContent.ColumnDefinitions[0].ActualWidth, right = DetailContent.ColumnDefinitions[2].ActualWidth;
+            if (left + right > 0) s.SideDetailsRatio = left / (left + right);
+        }
+        else s.StackedDetailsHeight = DetailContent.RowDefinitions[0].ActualHeight;
+        s.Save();
+    }
+
+    private void OnToggleStepsPanel(object sender, RoutedEventArgs e)
+    {
+        AppSettings.Current.StepsPanelCollapsed = !AppSettings.Current.StepsPanelCollapsed;
+        AppSettings.Current.Save();
+        ApplyStepsPanel();
+    }
+
+    /// <summary>Collapses the steps list to give the editor the whole width, or brings it back at its last width.</summary>
+    private void ApplyStepsPanel()
+    {
+        var s = AppSettings.Current;
+        bool collapsed = s.StepsPanelCollapsed;
+        StepsColumn.MinWidth = collapsed ? 0 : 260;
+        StepsColumn.Width = new GridLength(collapsed ? 0 : Math.Clamp(s.StepsPanelWidth, 260, 900));
+        StepsSplitterColumn.Width = new GridLength(collapsed ? 0 : 14);
+        StepsSplitter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        StepsToggle.Content = collapsed ? "▶ Show steps" : "◀ Hide steps";
+        UpdateViewState();
+    }
+
+    private void OnStepsSplitterDragged(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        AppSettings.Current.StepsPanelWidth = StepsColumn.ActualWidth;
+        AppSettings.Current.Save();
+    }
+
+    private void OnRemoveCalloutNote(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is CalloutNoteItem note && Selected is { } step)
+        {
+            step.RemoveCalloutNote(note);
+            SetDirty(true);
+        }
     }
 
     // ---------------- settings ----------------

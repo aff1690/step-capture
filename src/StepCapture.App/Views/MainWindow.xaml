@@ -113,13 +113,15 @@
             <DockPanel Grid.Row="1" Margin="0,20,0,10">
                 <TextBlock Text="★" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
                 <TextBlock x:Name="SectionTitle" Text="STEPS" Style="{StaticResource SectionLabel}" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center" />
+                <Button x:Name="StepsToggle" DockPanel.Dock="Left" Style="{StaticResource PillButton}" Click="OnToggleStepsPanel"
+                        Margin="0,0,12,0" Padding="10,2" FontSize="11" ToolTip="Hide or show the list of steps" />
                 <Rectangle Height="1" Fill="{DynamicResource LineBrush}" VerticalAlignment="Center" />
             </DockPanel>
 
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="360" MinWidth="260" />
-                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition x:Name="StepsColumn" Width="360" MinWidth="260" />
+                    <ColumnDefinition x:Name="StepsSplitterColumn" Width="14" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -181,7 +183,8 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <GridSplitter Grid.Column="1" Width="14" HorizontalAlignment="Stretch" Background="Transparent" />
+                <GridSplitter x:Name="StepsSplitter" Grid.Column="1" Width="14" HorizontalAlignment="Stretch" Background="Transparent"
+                              DragCompleted="OnStepsSplitterDragged" />
 
                 <!-- Empty state -->
                 <Border x:Name="EmptyState" Grid.Column="0" Grid.ColumnSpan="3" Style="{StaticResource Card}" Padding="40">
@@ -204,8 +207,6 @@
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
@@ -219,24 +220,91 @@
                                     Click="OnMoveDown" ToolTip="Ctrl+Down" />
                             <Button DockPanel.Dock="Right" Content="Move up" Style="{StaticResource ToolButton}" Margin="6,0,0,0"
                                     Click="OnMoveUp" ToolTip="Ctrl+Up" />
+                            <Button x:Name="LayoutButton" DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Margin="6,0,6,0"
+                                    Click="OnToggleLayout" />
                         </DockPanel>
 
-                        <StackPanel Grid.Row="1">
-                            <TextBlock Text="CAPTION" Style="{StaticResource FieldLabel}" />
-                            <TextBox x:Name="CaptionBox" FontSize="14" TextWrapping="Wrap"
-                                     Text="{Binding Caption, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnStepTextChanged" />
-                            <CheckBox x:Name="OverviewBox" Margin="0,8,0,0" IsChecked="{Binding IsOverview, Mode=TwoWay}"
-                                      Click="OnOverviewToggled" Foreground="{DynamicResource BodyBrush}"
-                                      Content="Overview (shown as a heading, without a step number)"
-                                      ToolTip="Use for screenshots that explain a screen or layout rather than an action" />
-                            <TextBlock Text="NOTES (OPTIONAL)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                            <local:NotesEditor x:Name="NotesBox" MaxHeight="190" Text="{Binding Notes, Mode=TwoWay}"
-                                               UserEdited="OnNotesEdited" />
-                        </StackPanel>
+                        <!-- Details and screenshot: stacked or side by side (see ApplyLayout), with a drag bar between them. -->
+                        <Grid x:Name="DetailContent" Grid.Row="1">
+                            <ScrollViewer x:Name="DetailsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Padding="0,0,6,0">
+                                <StackPanel>
+                                    <TextBlock Text="CAPTION" Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="CaptionBox" FontSize="14" TextWrapping="Wrap"
+                                             Text="{Binding Caption, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnStepTextChanged" />
+                                    <CheckBox x:Name="OverviewBox" Margin="0,8,0,0" IsChecked="{Binding IsOverview, Mode=TwoWay}"
+                                              Click="OnOverviewToggled" Foreground="{DynamicResource BodyBrush}"
+                                              Content="Overview (shown as a heading, without a step number)"
+                                              ToolTip="Use for screenshots that explain a screen or layout rather than an action" />
+                                    <TextBlock Text="GENERAL NOTES (OPTIONAL)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                                    <local:NotesEditor x:Name="NotesBox" MaxHeight="260" Text="{Binding Notes, Mode=TwoWay}"
+                                                       UserEdited="OnNotesEdited" />
 
-                        <local:ScreenshotEditor x:Name="Editor" Grid.Row="2" Grid.RowSpan="2" Margin="0,16,0,0"
-                                                Item="{Binding}" Edited="OnScreenshotEdited"
-                                                Visibility="{Binding ShowImageEditor, Converter={StaticResource BoolToVis}}" />
+                                    <StackPanel Margin="0,16,0,0" Visibility="{Binding HasCalloutNotes, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="CALLOUT NOTES" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                                        <ItemsControl ItemsSource="{Binding CalloutNoteItems}" Focusable="False">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,10" Padding="10" CornerRadius="10" BorderThickness="1"
+                                                            BorderBrush="{DynamicResource CardBorderBrush}" Background="{DynamicResource CardHoverBrush}">
+                                                        <StackPanel>
+                                                            <DockPanel>
+                                                                <Border DockPanel.Dock="Left" Width="24" Height="24" CornerRadius="12"
+                                                                        Background="{Binding BadgeBrush}" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding BadgeText}" Foreground="{Binding BadgeForeground}" FontWeight="Bold"
+                                                                               FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                </Border>
+                                                                <Button DockPanel.Dock="Right" Content="Remove" Style="{StaticResource ToolButton}" Margin="8,0,0,0"
+                                                                        Click="OnRemoveCalloutNote"
+                                                                        Visibility="{Binding IsOrphan, Converter={StaticResource BoolToVis}}" />
+                                                                <Grid Margin="8,0,0,0">
+                                                                    <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"
+                                                                             TextWrapping="Wrap" TextChanged="OnStepTextChanged" />
+                                                                    <TextBlock Text="{Binding TitleHint}" Margin="11,7,8,0" IsHitTestVisible="False"
+                                                                               Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Title}" Value="">
+                                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </Grid>
+                                                            </DockPanel>
+                                                            <local:NotesEditor Margin="32,8,0,0" MaxHeight="200" Text="{Binding Details, Mode=TwoWay}"
+                                                                               UserEdited="OnNotesEdited" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <GridSplitter x:Name="DetailSplitter" Background="Transparent" ShowsPreview="False"
+                                          DragCompleted="OnDetailSplitterDragged" ToolTip="Drag to resize">
+                                <GridSplitter.Template>
+                                    <ControlTemplate TargetType="GridSplitter">
+                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                            <Border x:Name="Grip" Background="{DynamicResource LineBrush}" CornerRadius="2" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Grip" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </GridSplitter.Template>
+                            </GridSplitter>
+
+                            <local:ScreenshotEditor x:Name="Editor" Item="{Binding}" Edited="OnScreenshotEdited"
+                                                    Visibility="{Binding ShowImageEditor, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>

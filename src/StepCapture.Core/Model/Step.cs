@@ -47,6 +47,9 @@ public sealed class Step
     /// <summary>Editable shapes drawn on the screenshot (arrows, boxes, text...).</summary>
     public List<MarkupItem> Markup { get; set; } = new();
 
+    /// <summary>One titled note per numbered callout (see <see cref="CalloutNotes"/>).</summary>
+    public List<CalloutNote> CalloutNotes { get; set; } = new();
+
     public Step Clone() => new()
     {
         Id = Guid.NewGuid(),
@@ -59,5 +62,6 @@ public sealed class Step
         ImagePng = ImagePng,
         BaseImagePng = BaseImagePng,
         Markup = Markup.Select(m => m.Clone()).ToList(),
+        CalloutNotes = CalloutNotes.Select(n => n.Clone()).ToList(),
     };
 }

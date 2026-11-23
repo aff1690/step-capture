@@ -66,9 +66,12 @@ public partial class NotesEditor : UserControl
             var tight = new Style(typeof(Paragraph));
             tight.Setters.Add(new Setter(Block.MarginProperty, new Thickness(0)));
             doc.Resources.Add(typeof(Paragraph), tight);
-            foreach (var line in RichText.Parse(text, trimBlankEdges: false))
+            var lines = RichText.Parse(text, trimBlankEdges: false);
+            // Open lists, innermost last, with the indent level each one sits at.
+            var stack = new List<(List List, int Level)>();
+            foreach (var line in lines)
             {
-                var p = new Paragraph { Margin = new Thickness(line.Indent * IndentStep, 0, 0, 0) };
+                var p = new Paragraph();
                 foreach (var span in line.Spans)
                 {
                     var run = new Run(span.Text);
@@ -77,8 +80,38 @@ public partial class NotesEditor : UserControl
                     if (span.Underline) run.TextDecorations = TextDecorations.Underline;
                     p.Inlines.Add(run);
                 }
-                doc.Blocks.Add(p);
+                if (line.List == ListKind.None)
+                {
+                    stack.Clear();
+                    p.Margin = new Thickness(line.Indent * IndentStep, 0, 0, 0);
+                    doc.Blocks.Add(p);
+                    continue;
+                }
+
+                int level = line.Indent;
+                var marker = MarkerFor(line.List, level);
+                while (stack.Count > 0 && stack[^1].Level > level) stack.RemoveAt(stack.Count - 1);
+                if (stack.Count > 0 && stack[^1].Level == level && IsNumbered(stack[^1].List.MarkerStyle) != (line.List == ListKind.Numbered))
+                    stack.RemoveAt(stack.Count - 1); // bullets after numbers (or the reverse) start a new list
+                if (stack.Count == 0 || stack[^1].Level < level)
+                {
+                    var list = NewList(marker);
+                    if (stack.Count == 0)
+                    {
+                        list.Margin = new Thickness(level * IndentStep, 0, 0, 0);
+                        doc.Blocks.Add(list);
+                    }
+                    else
+                    {
+                        var parent = stack[^1].List;
+                        if (parent.ListItems.Count == 0) parent.ListItems.Add(new ListItem());
+                        parent.ListItems.LastListItem.Blocks.Add(list);
+                    }
+                    stack.Add((list, level));
+                }
+                stack[^1].List.ListItems.Add(new ListItem(p));
             }
+            FixLists(doc);
             if (doc.Blocks.Count == 0) doc.Blocks.Add(new Paragraph { Margin = new Thickness(0) });
             Box.Document = doc;
         }
@@ -110,9 +143,25 @@ public partial class NotesEditor : UserControl
                 break;
             }
             case List list:
+            {
+                // A top-level list keeps its indent in its margin; a nested list is one level deeper than its parent.
+                int level = Math.Min(extraIndent + (list.Parent is ListItem ? 0 : LevelOf(list.Margin)), RichText.MaxIndent);
+                var kind = IsNumbered(list.MarkerStyle) ? ListKind.Numbered : ListKind.Bullet;
                 foreach (var item in list.ListItems)
-                    foreach (var b in item.Blocks) AddBlock(lines, b, extraIndent + 1);
+                {
+                    bool first = true;
+                    foreach (var b in item.Blocks)
+                    {
+                        if (b is List nested) { AddBlock(lines, nested, level + 1); continue; }
+                        int before = lines.Count;
+                        AddBlock(lines, b, level + (first ? 0 : 1));
+                        if (first && lines.Count > before && b is Paragraph) lines[before].List = kind;
+                        first = false;
+                    }
+                    if (first) lines.Add(new RichLine { Indent = level, List = kind }); // empty item
+                }
                 break;
+            }
             case Section section:
                 foreach (var b in section.Blocks) AddBlock(lines, b, extraIndent);
                 break;
@@ -147,8 +196,71 @@ public partial class NotesEditor : UserControl
     }
 
     /// <summary>Underline is set on the run or on an enclosing Underline/Span (TextDecorations isn't inherited).</summary>
-    private static int Level(Paragraph p) =>
-        double.IsNaN(p.Margin.Left) ? 0 : Math.Clamp((int)Math.Round(p.Margin.Left / IndentStep), 0, RichText.MaxIndent);
+    private static int Level(Paragraph p) => p.Parent is ListItem ? 0 : LevelOf(p.Margin);
+
+    private static int LevelOf(Thickness margin) =>
+        double.IsNaN(margin.Left) ? 0 : Math.Clamp((int)Math.Round(margin.Left / IndentStep), 0, RichText.MaxIndent);
+
+    // ---------------- lists ----------------
+
+    private static bool IsNumbered(TextMarkerStyle m) =>
+        m is TextMarkerStyle.Decimal or TextMarkerStyle.LowerLatin or TextMarkerStyle.LowerRoman
+            or TextMarkerStyle.UpperLatin or TextMarkerStyle.UpperRoman;
+
+    /// <summary>Same markers as the exports: 1. a. i. for numbers and • ◦ ▪ for bullets, by level.</summary>
+    private static TextMarkerStyle MarkerFor(ListKind kind, int level) => kind == ListKind.Numbered
+        ? (level % 3) switch { 1 => TextMarkerStyle.LowerLatin, 2 => TextMarkerStyle.LowerRoman, _ => TextMarkerStyle.Decimal }
+        : (level % 3) switch { 1 => TextMarkerStyle.Circle, 2 => TextMarkerStyle.Square, _ => TextMarkerStyle.Disc };
+
+    private static List NewList(TextMarkerStyle marker) =>
+        new() { MarkerStyle = marker, Margin = new Thickness(0), Padding = new Thickness(IndentStep, 0, 0, 0) };
+
+    /// <summary>
+    /// Sets each list's marker style for its level and its start number, so numbering continues across
+    /// blank lines and deeper items exactly as in the exports (see RichText.ListLabels).
+    /// </summary>
+    private static void FixLists(FlowDocument doc)
+    {
+        var counters = new int[RichText.MaxIndent + 2];
+        void Reset(int from) { for (int k = Math.Max(0, from); k < counters.Length; k++) counters[k] = 0; }
+
+        void Walk(IEnumerable<Block> blocks, int extra)
+        {
+            foreach (var b in blocks)
+            {
+                switch (b)
+                {
+                    case Paragraph p:
+                        bool empty = new TextRange(p.ContentStart, p.ContentEnd).Text.Trim().Length == 0;
+                        if (!empty) Reset(extra + Level(p));
+                        break;
+                    case Section sec:
+                        Walk(sec.Blocks, extra);
+                        break;
+                    case List list:
+                    {
+                        int level = Math.Min(extra + (list.Parent is ListItem ? 0 : LevelOf(list.Margin)), RichText.MaxIndent);
+                        bool numbered = IsNumbered(list.MarkerStyle);
+                        var marker = MarkerFor(numbered ? ListKind.Numbered : ListKind.Bullet, level);
+                        if (list.MarkerStyle != marker) list.MarkerStyle = marker;
+                        if (!numbered) counters[level] = 0;
+                        int start = counters[level] + 1;
+                        if (numbered && list.StartIndex != start) list.StartIndex = start;
+                        if (list.Padding.Left != IndentStep) list.Padding = new Thickness(IndentStep, 0, 0, 0);
+                        foreach (var item in list.ListItems)
+                        {
+                            Reset(level + 1);
+                            if (numbered) counters[level]++;
+                            foreach (var ib in item.Blocks)
+                                if (ib is List nested) Walk(new[] { nested }, level + 1);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        Walk(doc.Blocks, 0);
+    }
 
     private static bool IsUnderlined(Inline inline)
     {
@@ -157,9 +269,14 @@ public partial class NotesEditor : UserControl
         return false;
     }
 
+    private bool _fixing;
+
     private void OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_loading) return;
+        if (_loading || _fixing) return;
+        _fixing = true;
+        try { FixLists(Box.Document); }
+        finally { _fixing = false; }
         Sync();
     }
 
@@ -180,6 +297,8 @@ public partial class NotesEditor : UserControl
     private void OnUnderline(object sender, RoutedEventArgs e) => EditingCommands.ToggleUnderline.Execute(null, Box);
     private void OnIndent(object sender, RoutedEventArgs e) => ChangeIndent(+1);
     private void OnOutdent(object sender, RoutedEventArgs e) => ChangeIndent(-1);
+    private void OnBullets(object sender, RoutedEventArgs e) => EditingCommands.ToggleBullets.Execute(null, Box);
+    private void OnNumbering(object sender, RoutedEventArgs e) => EditingCommands.ToggleNumbering.Execute(null, Box);
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -191,6 +310,12 @@ public partial class NotesEditor : UserControl
     /// <summary>Indents or outdents every paragraph touched by the selection.</summary>
     private void ChangeIndent(int delta)
     {
+        // Inside a list, Tab nests the item one level deeper (1. -> a. -> i.) and Shift+Tab brings it back.
+        if (Box.Selection.Start.Paragraph?.Parent is ListItem)
+        {
+            (delta > 0 ? EditingCommands.IncreaseIndentation : EditingCommands.DecreaseIndentation).Execute(null, Box);
+            return;
+        }
         var start = Box.Selection.Start.Paragraph;
         var end = Box.Selection.End.Paragraph;
         bool inRange = false;

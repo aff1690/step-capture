@@ -11,7 +11,7 @@ namespace StepCapture.Core.Storage;
 public static class GuideFile
 {
     public const string Extension = ".stepguide";
-    private const int FormatVersion = 3; // 2: editable markup, 3: overview steps
+    private const int FormatVersion = 4; // 2: editable markup, 3: overview steps, 4: callout notes
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -21,7 +21,8 @@ public static class GuideFile
     };
 
     private sealed record StepDto(Guid Id, StepKind Kind, string Caption, string Notes, string AppName,
-        DateTimeOffset Timestamp, string? Image, string? BaseImage = null, List<MarkupItem>? Markup = null, bool Overview = false);
+        DateTimeOffset Timestamp, string? Image, string? BaseImage = null, List<MarkupItem>? Markup = null, bool Overview = false,
+        List<CalloutNote>? CalloutNotes = null);
 
     private sealed record GuideDto(int Version, string Title, string Description, DateTimeOffset Created, List<StepDto> Steps);
 
@@ -37,7 +38,8 @@ public static class GuideFile
                 string? image = WriteImage(zip, s.ImagePng, $"images/{s.Id:N}.png");
                 string? baseImage = s.Markup.Count > 0 ? WriteImage(zip, s.BaseImagePng, $"images/{s.Id:N}-base.png") : null;
                 steps.Add(new StepDto(s.Id, s.Kind, s.Caption, s.Notes, s.AppName, s.Timestamp, image,
-                    baseImage, baseImage is null ? null : s.Markup, s.IsOverview));
+                    baseImage, baseImage is null ? null : s.Markup, s.IsOverview,
+                    s.CalloutNotes.Count > 0 ? s.CalloutNotes : null));
             }
 
             var dto = new GuideDto(FormatVersion, guide.Title, guide.Description, guide.Created, steps);
@@ -64,6 +66,7 @@ public static class GuideFile
                 Id = s.Id, Kind = s.Kind, Caption = s.Caption, Notes = s.Notes,
                 AppName = s.AppName, Timestamp = s.Timestamp, ImagePng = ReadImage(zip, s.Image),
                 IsOverview = s.Overview,
+                CalloutNotes = s.CalloutNotes ?? new List<CalloutNote>(),
             };
             if (ReadImage(zip, s.BaseImage) is { } basePng && s.Markup is { Count: > 0 } markup)
             {

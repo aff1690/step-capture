@@ -102,6 +102,8 @@
     </Style>
 
     <Style TargetType="TextBox">
+        <Setter Property="SpellCheck.IsEnabled" Value="True" />
+        <Setter Property="Language" Value="en-US" />
         <Setter Property="Background" Value="{DynamicResource InputBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
@@ -337,6 +339,8 @@
 
     <!-- Formatted notes editor: same look as a text box. -->
     <Style TargetType="RichTextBox">
+        <Setter Property="SpellCheck.IsEnabled" Value="True" />
+        <Setter Property="Language" Value="en-US" />
         <Setter Property="Background" Value="{DynamicResource InputBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />

@@ -114,7 +114,7 @@ public partial class ScreenshotEditor : UserControl
             Tool.Pen => "Drag to draw freehand.",
             Tool.Highlight => "Drag over an area to highlight it.",
             Tool.Text => "Click where the text should go, type, then press Enter. Click existing text to edit it.",
-            Tool.Number => "Click to place numbered callouts: 1, 2, 3… Each one adds a matching numbered line to the notes.",
+            Tool.Number => "Click to place numbered callouts: 1, 2, 3… Each one gets its own titled note under the general notes.",
             _ => "",
         };
     }
@@ -452,10 +452,7 @@ public partial class ScreenshotEditor : UserControl
             case Tool.Number:
             {
                 var callout = NewShape(MarkupKind.Number, p);
-                AddShape(callout);
-                // Add a matching "n. " line to the notes so only the description needs typing.
-                if (Item is not null && int.TryParse(callout.Text, out int number))
-                    Item.Notes = RichText.EnsureNumberedLine(Item.Notes, number);
+                AddShape(callout); // its titled note appears under the general notes (StepItem.RefreshCalloutNotes)
                 return;
             }
 
