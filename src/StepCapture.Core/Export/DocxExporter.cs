@@ -119,7 +119,8 @@ public sealed class DocxExporter : IGuideExporter
             var line = lines[i];
             bool item = line.List != ListKind.None;
             var pp = new ParagraphProperties();
-            if (keepWithNext || i < lines.Count - 1) pp.Append(new KeepNext());
+            // Only the last line stays with what follows (the screenshot), so long notes can run onto the next page.
+            if (keepWithNext && i == lines.Count - 1) pp.Append(new KeepNext());
             if (item) pp.Append(new Tabs(new TabStop { Val = TabStopValues.Left, Position = baseIndentTwips + (line.Indent + 1) * 360 }));
             pp.Append(new SpacingBetweenLines { After = i == lines.Count - 1 ? "80" : "0" });
             int left = baseIndentTwips + (line.Indent + (item ? 1 : 0)) * 360;

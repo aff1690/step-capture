@@ -56,7 +56,7 @@ public sealed class HtmlExporter : IGuideExporter
               .letterhead img { border:0; border-radius:0; margin:0 0 24px; }
               .footer { color:var(--muted); font-size:13px; text-align:center; margin-top:32px; white-space:pre-line; }
               img { display:block; max-width:100%; height:auto; margin:12px 0 0; border:1px solid var(--line); border-radius:6px; }
-              @media print { body { background:#fff; } li { break-inside: avoid; border-color:#ccc; } }
+              @media print { body { background:#fff; } li { border-color:#ccc; } .head { break-after: avoid; } img, .callout { break-inside: avoid; } }
             </style>
             </head>
             <body>

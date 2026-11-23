@@ -59,25 +59,32 @@ public sealed class PdfExporter : IGuideExporter
                 ? new List<NoteRow>()
                 : LayoutRich(page.Gfx, step.Notes, width - badge - gap);
 
-            double textHeight = Math.Max(badge, captionLines.Count * capLine) + noteLines.Count * 15;
+            double captionHeight = Math.Max(badge, captionLines.Count * capLine + (overview ? 0 : 2));
+            double textHeight = captionHeight + noteLines.Count * NoteLineHeight;
             XImage? image = null;
             double imgW = 0, imgH = 0;
             if (step.ImagePng is { Length: > 0 } png)
             {
                 image = XImage.FromStream(new MemoryStream(png, 0, png.Length, writable: false, publiclyVisible: true));
-                double maxH = page.ContentHeight - textHeight - 30;
+                // Size the screenshot for a page of its own if needed; long notes never shrink it.
+                double maxH = page.ContentHeight - 10;
                 // Never enlarge small crops beyond their natural size (1 px = 0.75 pt at 96 DPI).
                 double s = Math.Min(0.75, Math.Min(width / image.PixelWidth, maxH / image.PixelHeight));
                 imgW = image.PixelWidth * s;
                 imgH = image.PixelHeight * s;
             }
 
-            // Keep a step's caption and its screenshot on the same page.
+            // A step that fits on one page is kept together. A longer one flows: the caption starts with a few
+            // lines of its notes, the notes continue on the next page, and the screenshot follows where it fits.
             double spaceAbove = overview ? 24 : 18;
-            page.EnsureSpace(spaceAbove + textHeight + (image is null ? 0 : imgH + 10));
+            double whole = spaceAbove + textHeight + (image is null ? 0 : imgH + 10);
+            page.EnsureSpace(whole <= page.ContentHeight
+                ? whole
+                : spaceAbove + captionHeight + Math.Min(3, noteLines.Count) * NoteLineHeight);
             page.Y += spaceAbove;
 
             double top = page.Y;
+            int startPage = page.PageNumber;
             if (!overview)
             {
                 page.Gfx.DrawEllipse(accent, page.Left, top, badge, badge);
@@ -92,15 +99,18 @@ public sealed class PdfExporter : IGuideExporter
                 page.Gfx.DrawString(line, capFont, XBrushes.Black, new XRect(textX, y, width, capLine), XStringFormats.TopLeft);
                 y += capLine;
             }
+            page.Y = y;
             foreach (var row in noteLines)
             {
-                DrawNoteRow(page.Gfx, row, textX, y, muted);
-                y += 15;
+                page.EnsureSpace(NoteLineHeight);
+                DrawNoteRow(page.Gfx, row, textX, page.Y, muted);
+                page.Y += NoteLineHeight;
             }
-            page.Y = Math.Max(y, top + badge);
+            if (page.PageNumber == startPage) page.Y = Math.Max(page.Y, top + badge);
 
             if (image is not null)
             {
+                page.EnsureSpace(imgH + 10); // moves to the next page when it doesn't fit below the notes
                 page.Y += 10;
                 page.Gfx.DrawImage(image, page.Left, page.Y, imgW, imgH);
                 page.Gfx.DrawRectangle(border, page.Left, page.Y, imgW, imgH);
@@ -140,7 +150,7 @@ public sealed class PdfExporter : IGuideExporter
     // ---------------- formatted notes ----------------
 
     private const double CalloutDetailIndent = 22;
-    private const double NoteLineHeight = 15, NoteIndent = 18, NoteListHang = 18, NoteBadge = 15, NoteBadgeGap = 5;
+    private const double NoteLineHeight = 15, NoteIndent = 18, NoteListHang = 22, NoteBadge = 15, NoteBadgeGap = 5;
 
     private sealed record NoteFrag(string Text, XFont Font, bool Underline, double X, double Width);
 
@@ -321,6 +331,9 @@ public sealed class PdfExporter : IGuideExporter
         public double Left => Margin;
         public double ContentWidth { get; private set; }
         public double ContentHeight { get; private set; }
+
+        /// <summary>Counts pages, so callers can tell whether a page break happened.</summary>
+        public int PageNumber { get; private set; }
         private double _top, _bottom;
 
         public PageCursor(PdfDocument doc, Letterhead? letterhead)
@@ -351,6 +364,7 @@ public sealed class PdfExporter : IGuideExporter
         {
             Gfx?.Dispose();
             var page = _doc.AddPage();
+            PageNumber++;
             page.Size = PageSize.Letter;
             Gfx = XGraphics.FromPdfPage(page);
             double pageW = page.Width.Point, pageH = page.Height.Point;
