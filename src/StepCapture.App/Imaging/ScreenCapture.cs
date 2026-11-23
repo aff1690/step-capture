@@ -27,8 +27,33 @@ internal sealed class CapturedScreen : IDisposable
     }
 }
 
+/// <summary>A connected monitor, numbered left to right, as offered in the "Add screenshot" menu.</summary>
+internal sealed record MonitorChoice(IntPtr Handle, int Number, Rectangle Bounds, bool IsPrimary)
+{
+    public string Label => $"Screen {Number}{(IsPrimary ? " (main)" : "")}, {Bounds.Width} × {Bounds.Height}";
+}
+
 internal static class ScreenCapture
 {
+    /// <summary>All monitors, ordered left to right (then top to bottom).</summary>
+    public static IReadOnlyList<MonitorChoice> Monitors()
+    {
+        var found = new List<(IntPtr Handle, Rectangle Bounds, bool Primary)>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr _, ref RECT _, IntPtr _) =>
+        {
+            var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+            if (GetMonitorInfo(h, ref info))
+                found.Add((h, Rectangle.FromLTRB(info.rcMonitor.Left, info.rcMonitor.Top, info.rcMonitor.Right, info.rcMonitor.Bottom),
+                    (info.dwFlags & MONITORINFOF_PRIMARY) != 0));
+            return true;
+        }, IntPtr.Zero);
+        return found.OrderBy(m => m.Bounds.X).ThenBy(m => m.Bounds.Y)
+            .Select((m, i) => new MonitorChoice(m.Handle, i + 1, m.Bounds, m.Primary)).ToList();
+    }
+
+    /// <summary>Captures a monitor from <see cref="Monitors"/>.</summary>
+    public static CapturedScreen Capture(MonitorChoice monitor) => CaptureMonitor(monitor.Handle);
+
     /// <summary>Captures the monitor that contains the given screen point.</summary>
     public static CapturedScreen CaptureMonitorAt(int x, int y) =>
         CaptureMonitor(MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST));

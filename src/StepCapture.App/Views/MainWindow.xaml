@@ -78,11 +78,7 @@
                                     <TextBlock Text=" ▾" Foreground="{DynamicResource MutedBrush}" FontSize="14" />
                                 </StackPanel>
                                 <Button.ContextMenu>
-                                    <ContextMenu x:Name="AddShotMenu">
-                                        <MenuItem Header="Capture the screen in 3 seconds" Click="OnCaptureTimed" />
-                                        <MenuItem Header="Paste from clipboard" Click="OnPasteScreenshot" InputGestureText="Ctrl+Shift+V" />
-                                        <MenuItem Header="From an image file…" Click="OnImportImage" />
-                                    </ContextMenu>
+                                    <ContextMenu x:Name="AddShotMenu" />
                                 </Button.ContextMenu>
                             </Button>
                             <Button x:Name="RecordButton" Style="{StaticResource AccentButton}" Click="OnRecord" Margin="0"
