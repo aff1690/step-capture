@@ -40,6 +40,9 @@ public sealed class HtmlExporter : IGuideExporter
               .num { flex:none; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff;
                      display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; }
               .cap { font-weight:600; padding-top:3px; }
+              li.overview { border-left:4px solid var(--accent); }
+              li.overview .cap { font-size:19px; padding-top:0; }
+              li.overview .notes { margin-left:0; }
               .notes { color:var(--muted); margin:6px 0 0 42px; white-space:pre-wrap; }
               .letterhead img { border:0; border-radius:0; margin:0 0 24px; }
               .footer { color:var(--muted); font-size:13px; text-align:center; margin-top:32px; white-space:pre-line; }
@@ -54,20 +57,22 @@ public sealed class HtmlExporter : IGuideExporter
         if (letterhead?.HeaderImage is { Length: > 0 } banner)
             sb.Append($"<div class=\"letterhead\"><img alt=\"\" src=\"data:{letterhead.HeaderImageType};base64,{Convert.ToBase64String(banner)}\"></div>\n");
         sb.Append($"<h1>{E(guide.Title)}</h1>\n");
-        sb.Append($"<p class=\"meta\">{guide.Steps.Count} steps · {E(guide.Created.ToString("MMMM d, yyyy"))}</p>\n");
+        sb.Append($"<p class=\"meta\">{guide.NumberedStepCount} steps · {E(guide.Created.ToString("MMMM d, yyyy"))}</p>\n");
         if (!string.IsNullOrWhiteSpace(guide.Description))
             sb.Append($"<p class=\"desc\">{E(guide.Description)}</p>\n");
         sb.Append("<ol>\n");
-        int n = 0;
-        foreach (var step in guide.Steps)
+        var numbers = guide.StepNumbers();
+        for (int i = 0; i < guide.Steps.Count; i++)
         {
-            n++;
-            sb.Append("<li>\n<div class=\"head\">");
-            sb.Append($"<span class=\"num\">{n}</span><span class=\"cap\">{E(step.Caption)}</span></div>\n");
+            var step = guide.Steps[i];
+            int? n = numbers[i];
+            sb.Append(n is null ? "<li class=\"overview\">\n<div class=\"head\">" : "<li>\n<div class=\"head\">");
+            if (n is not null) sb.Append($"<span class=\"num\">{n}</span>");
+            sb.Append($"<span class=\"cap\">{E(step.Caption)}</span></div>\n");
             if (!string.IsNullOrWhiteSpace(step.Notes))
                 sb.Append($"<p class=\"notes\">{E(step.Notes)}</p>\n");
             if (step.ImagePng is { Length: > 0 } png)
-                sb.Append($"<img alt=\"Step {n}: {E(step.Caption)}\" src=\"data:image/png;base64,{Convert.ToBase64String(png)}\">\n");
+                sb.Append($"<img alt=\"{(n is null ? "" : $"Step {n}: ")}{E(step.Caption)}\" src=\"data:image/png;base64,{Convert.ToBase64String(png)}\">\n");
             sb.Append("</li>\n");
         }
         sb.Append("</ol>\n");

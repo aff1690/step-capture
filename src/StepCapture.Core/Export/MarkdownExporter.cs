@@ -20,19 +20,24 @@ public sealed class MarkdownExporter : IGuideExporter
         if (!string.IsNullOrWhiteSpace(guide.Description))
             sb.Append(guide.Description.Trim()).Append("\n\n");
 
-        int n = 0;
-        foreach (var step in guide.Steps)
+        var numbers = guide.StepNumbers();
+        for (int i = 0; i < guide.Steps.Count; i++)
         {
-            n++;
-            sb.Append(n).Append(". ").Append(EscapeInline(step.Caption)).Append('\n');
+            var step = guide.Steps[i];
+            int? n = numbers[i];
+            // Overview steps are headings with unindented text; numbered steps are list items.
+            string indent = n is null ? "" : "   ";
+            if (n is null) sb.Append("## ").Append(EscapeInline(step.Caption)).Append('\n');
+            else sb.Append(n).Append(". ").Append(EscapeInline(step.Caption)).Append('\n');
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                sb.Append('\n').Append("   ").Append(step.Notes.Trim().Replace("\n", "\n   ")).Append('\n');
+                sb.Append('\n').Append(indent).Append(step.Notes.Trim().Replace("\n", "\n" + indent)).Append('\n');
             if (step.ImagePng is { Length: > 0 } png)
             {
                 Directory.CreateDirectory(imageDir);
-                string file = $"step-{n:D3}.png";
+                string file = $"step-{i + 1:D3}.png";
                 File.WriteAllBytes(Path.Combine(imageDir, file), png);
-                sb.Append('\n').Append($"   ![Step {n}]({Uri.EscapeDataString(imageFolderName)}/{file})").Append('\n');
+                string alt = n is null ? EscapeInline(step.Caption) : $"Step {n}";
+                sb.Append('\n').Append($"{indent}![{alt}]({Uri.EscapeDataString(imageFolderName)}/{file})").Append('\n');
             }
             sb.Append('\n');
         }

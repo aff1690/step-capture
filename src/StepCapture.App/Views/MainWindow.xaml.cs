@@ -6,10 +6,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Win32;
 using StepCapture.App.Imaging;
+using StepCapture.App.Native;
 using StepCapture.App.Recording;
 using StepCapture.App.Themes;
 using StepCapture.Core.Export;
 using StepCapture.Core.Model;
+using StepCapture.Core.Recording;
 using StepCapture.Core.Storage;
 
 namespace StepCapture.App.Views;
@@ -37,6 +39,8 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnNew(this, new RoutedEventArgs())), Key.N, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnOpen(this, new RoutedEventArgs())), Key.O, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new RelayCommand(() => OnSave(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new RelayCommand(() => { if (_recorder is null) PasteScreenshot(showError: true); }),
+            Key.V, ModifierKeys.Control | ModifierKeys.Shift));
         PreviewKeyDown += OnWindowKeyDown;
         Drop += OnFileDrop;
 
@@ -100,9 +104,25 @@ public partial class MainWindow : Window
         SectionTitle.Text = _steps.Count == 0 ? "STEPS" : $"STEPS  ·  {_steps.Count}";
     }
 
+    /// <summary>Numbers regular steps 1, 2, 3...; overview steps don't count.</summary>
     private void Renumber()
     {
-        for (int i = 0; i < _steps.Count; i++) _steps[i].Number = i + 1;
+        var numbers = Guide.Numbers(_steps.Select(i => i.Model));
+        for (int i = 0; i < _steps.Count; i++) _steps[i].Number = numbers[i] ?? 0;
+        UpdateStepHeader();
+    }
+
+    private void UpdateStepHeader()
+    {
+        if (Selected is not { } s) return;
+        int numbered = _steps.Count(i => !i.IsOverview);
+        StepHeader.Text = s.IsOverview ? "OVERVIEW" : $"STEP {s.Number} OF {numbered}";
+    }
+
+    private void OnOverviewToggled(object sender, RoutedEventArgs e)
+    {
+        Renumber();
+        SetDirty(true);
     }
 
     private void UpdateViewState()
@@ -118,7 +138,7 @@ public partial class MainWindow : Window
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         DetailPane.DataContext = Selected;
-        if (Selected is { } s) StepHeader.Text = $"STEP {s.Number} OF {_steps.Count}";
+        UpdateStepHeader();
         UpdateViewState();
     }
 
@@ -170,10 +190,16 @@ public partial class MainWindow : Window
         _recorder.StepAdded += OnRecordedStepAdded;
         _recorder.StepUpdated += OnRecordedStepUpdated;
         _recorder.StepRemoved += OnRecordedStepRemoved;
+        _recorder.ScreenshotTaken += () => _bar?.FlashCaptured();
         _recorder.PauseHotkeyPressed += TogglePause;
         _recorder.StopHotkeyPressed += StopRecording;
 
         _bar = new RecordingBar();
+        _bar.ScreenshotClicked += () =>
+        {
+            try { _recorder?.CaptureScreenshot(drawCursor: false); }
+            catch (Exception ex) { Log.Error("Screenshot", ex); }
+        };
         _bar.PauseClicked += TogglePause;
         _bar.StopClicked += StopRecording;
         _bar.Show();
@@ -276,7 +302,7 @@ public partial class MainWindow : Window
         _steps.Move(from, to);
         StepList.SelectedItem = item;
         StepList.ScrollIntoView(item);
-        StepHeader.Text = $"STEP {item.Number} OF {_steps.Count}";
+        UpdateStepHeader();
         SetDirty(true);
     }
 
@@ -301,6 +327,125 @@ public partial class MainWindow : Window
     }
 
     private void OnScreenshotEdited() => SetDirty(true);
+
+    // ---------------- screenshots without recording ----------------
+
+    private void OnAddScreenshotMenu(object sender, RoutedEventArgs e)
+    {
+        AddShotMenu.PlacementTarget = AddShotButton;
+        AddShotMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        AddShotMenu.IsOpen = true;
+    }
+
+    /// <summary>Hides StepCapture, waits 3 seconds so you can set the screen up, and captures the monitor under the cursor.</summary>
+    private async void OnCaptureTimed(object sender, RoutedEventArgs e)
+    {
+        if (_recorder is not null) return;
+        var previous = WindowState == WindowState.Minimized ? WindowState.Normal : WindowState;
+        WindowState = WindowState.Minimized;
+        try
+        {
+            await Task.Delay(3000);
+            byte[] png;
+            string? app;
+            NativeMethods.GetCursorPos(out var pt);
+            using (var shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y))
+                png = Annotator.RenderPlain(shot, drawCursor: false);
+            app = await Task.Run(() => ElementInspector.Focused().Info?.AppName);
+            AddScreenshotStep(png, CaptionBuilder.ForScreenshot(app), app);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Timed screenshot", ex);
+            MessageBox.Show(this, "Could not capture the screen: " + ex.Message, "StepCapture", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            WindowState = previous;
+            Activate();
+        }
+    }
+
+    private void OnPasteScreenshot(object sender, RoutedEventArgs e) => PasteScreenshot(showError: true);
+
+    /// <summary>Adds the image on the clipboard (for example from Snipping Tool or Print Screen) as an overview step.</summary>
+    private bool PasteScreenshot(bool showError)
+    {
+        try
+        {
+            byte[]? png = null;
+            if (Clipboard.ContainsImage() && Clipboard.GetImage() is { } bmp)
+                png = ImageFiles.EncodePng(bmp);
+            else if (Clipboard.ContainsFileDropList())
+            {
+                foreach (string? f in Clipboard.GetFileDropList())
+                    if (f is not null && ImageFiles.IsImage(f)) { png = ImageFiles.LoadAsPng(f); break; }
+            }
+
+            if (png is null)
+            {
+                if (showError)
+                    MessageBox.Show(this, "There's no picture on the clipboard. Copy a screenshot first (for example with Win+Shift+S).",
+                        "Paste screenshot", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
+            AddScreenshotStep(png, "Overview", null);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Paste screenshot", ex);
+            if (showError)
+                MessageBox.Show(this, "Could not paste the picture: " + ex.Message, "Paste screenshot", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private void OnImportImage(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Add screenshots",
+            Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff",
+            Multiselect = true,
+        };
+        if (dlg.ShowDialog(this) == true) ImportImages(dlg.FileNames);
+    }
+
+    private void ImportImages(IEnumerable<string> files)
+    {
+        foreach (var f in files)
+        {
+            try
+            {
+                AddScreenshotStep(ImageFiles.LoadAsPng(f), Path.GetFileNameWithoutExtension(f), null);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Import image " + f, ex);
+                MessageBox.Show(this, $"Could not read {Path.GetFileName(f)}: {ex.Message}", "Add screenshot",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    /// <summary>Inserts an overview step with the picture after the selected step (or at the end) and selects it.</summary>
+    private void AddScreenshotStep(byte[] png, string caption, string? appName)
+    {
+        var item = new StepItem(new Step
+        {
+            Kind = StepKind.Screenshot,
+            IsOverview = true,
+            Caption = caption,
+            AppName = appName ?? "",
+            ImagePng = png,
+        });
+        int index = Selected is { } s ? _steps.IndexOf(s) + 1 : _steps.Count;
+        _steps.Insert(index, item);
+        StepList.SelectedItem = item;
+        StepList.ScrollIntoView(item);
+        SetDirty(true);
+    }
 
     // ---------------- files ----------------
 
@@ -333,10 +478,15 @@ public partial class MainWindow : Window
 
     private void OnFileDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files
-            && files[0].EndsWith(GuideFile.Extension, StringComparison.OrdinalIgnoreCase)
-            && _recorder is null && ConfirmDiscard())
-            OpenFile(files[0]);
+        if (_recorder is not null || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } files) return;
+        if (files[0].EndsWith(GuideFile.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            if (ConfirmDiscard()) OpenFile(files[0]);
+            return;
+        }
+        // Pictures dropped on the window become overview steps.
+        var images = files.Where(ImageFiles.IsImage).ToList();
+        if (images.Count > 0) ImportImages(images);
     }
 
     private void OnSave(object sender, RoutedEventArgs e) => Save(saveAs: false);

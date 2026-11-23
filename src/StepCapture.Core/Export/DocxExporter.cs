@@ -27,27 +27,33 @@ public sealed class DocxExporter : IGuideExporter
         var (maxWidth, maxHeight) = ImageArea(section);
 
         section.InsertBeforeSelf(TextParagraph(guide.Title, sizeHalfPoints: 40, bold: true, spacingAfter: 120));
-        section.InsertBeforeSelf(TextParagraph($"{guide.Steps.Count} steps · {guide.Created:MMMM d, yyyy}",
+        section.InsertBeforeSelf(TextParagraph($"{guide.NumberedStepCount} steps · {guide.Created:MMMM d, yyyy}",
             sizeHalfPoints: 20, color: "5B6475", spacingAfter: 240));
         if (!string.IsNullOrWhiteSpace(guide.Description))
             section.InsertBeforeSelf(TextParagraph(guide.Description.Trim(), spacingAfter: 240));
 
         uint imageId = 1000; // clear of ids used by pictures in a letterhead header
-        int n = 0;
-        foreach (var step in guide.Steps)
+        var numbers = guide.StepNumbers();
+        for (int i = 0; i < guide.Steps.Count; i++)
         {
-            n++;
-            var caption = new Paragraph(
-                new ParagraphProperties(new KeepNext(), new SpacingBetweenLines { Before = "240", After = "80" }),
-                Run($"{n}. ", bold: true, color: "E8590C", sizeHalfPoints: 26),
-                Run(step.Caption, bold: true, sizeHalfPoints: 24));
+            var step = guide.Steps[i];
+            int? n = numbers[i];
+            // Overview steps read as a heading with no number; regular steps get "1.", "2."...
+            var caption = n is null
+                ? new Paragraph(
+                    new ParagraphProperties(new KeepNext(), new SpacingBetweenLines { Before = "360", After = "100" }),
+                    Run(step.Caption, bold: true, color: "1D2330", sizeHalfPoints: 30))
+                : new Paragraph(
+                    new ParagraphProperties(new KeepNext(), new SpacingBetweenLines { Before = "240", After = "80" }),
+                    Run($"{n}. ", bold: true, color: "E8590C", sizeHalfPoints: 26),
+                    Run(step.Caption, bold: true, sizeHalfPoints: 24));
             section.InsertBeforeSelf(caption);
 
             if (!string.IsNullOrWhiteSpace(step.Notes))
                 section.InsertBeforeSelf(TextParagraph(step.Notes.Trim(), color: "5B6475", spacingAfter: 80, keepNext: step.ImagePng is not null));
 
             if (step.ImagePng is { Length: > 0 } png)
-                section.InsertBeforeSelf(ImageParagraph(main, png, imageId++, $"Step {n}", maxWidth, maxHeight));
+                section.InsertBeforeSelf(ImageParagraph(main, png, imageId++, n is null ? "Overview" : $"Step {n}", maxWidth, maxHeight));
         }
 
         main.Document.Save();

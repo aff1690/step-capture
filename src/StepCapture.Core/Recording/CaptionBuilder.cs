@@ -44,6 +44,10 @@ public static class CaptionBuilder
 
     public static string ForKeyPress(string keys) => $"Press {keys}";
 
+    /// <summary>Caption for a screenshot taken without a click, for example "Overview of Notepad".</summary>
+    public static string ForScreenshot(string? appName) =>
+        string.IsNullOrWhiteSpace(appName) ? "Overview" : $"Overview of {Clean(appName)}";
+
     internal static string FriendlyControlType(string controlType)
     {
         string t = (controlType ?? "").Trim().ToLowerInvariant();

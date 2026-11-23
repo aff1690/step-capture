@@ -109,6 +109,27 @@ public sealed class StepBuilder
         }
     }
 
+    /// <summary>
+    /// Adds a screenshot taken without a click (camera button or hotkey) as an overview step.
+    /// </summary>
+    public Step OnScreenshot(DateTimeOffset time, byte[] png, string? appName)
+    {
+        EndTyping();
+        _lastClick = null;
+        _lastClickStep = null;
+        var step = new Step
+        {
+            Kind = StepKind.Screenshot,
+            IsOverview = true,
+            Caption = CaptionBuilder.ForScreenshot(appName),
+            AppName = appName ?? "",
+            Timestamp = time,
+            ImagePng = png,
+        };
+        StepAdded?.Invoke(step);
+        return step;
+    }
+
     /// <summary>Closes any open "Type ..." step. Call when recording stops or pauses.</summary>
     public void Flush() => EndTyping();
 

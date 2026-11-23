@@ -27,8 +27,25 @@ public sealed class StepItem : INotifyPropertyChanged
     public int Number
     {
         get => _number;
-        set { if (_number != value) { _number = value; OnChanged(); } }
+        set { if (_number != value) { _number = value; OnChanged(); OnChanged(nameof(BadgeText)); } }
     }
+
+    /// <summary>Overview steps show a heading instead of a number and are left out of the numbering.</summary>
+    public bool IsOverview
+    {
+        get => Model.IsOverview;
+        set
+        {
+            if (Model.IsOverview == value) return;
+            Model.IsOverview = value;
+            OnChanged();
+            OnChanged(nameof(BadgeText));
+            OnChanged(nameof(KindLabel));
+        }
+    }
+
+    /// <summary>Text in the list badge: the step number, or a star for an overview.</summary>
+    public string BadgeText => IsOverview ? "\u2605" : _number.ToString();
 
     public string Caption
     {
@@ -49,8 +66,9 @@ public sealed class StepItem : INotifyPropertyChanged
     /// <summary>Show the screenshot editor while there is an image, or a removed image to bring back.</summary>
     public bool ShowImageEditor => HasImage || CanUndoImage;
 
-    public string KindLabel => Model.Kind switch
+    public string KindLabel => IsOverview ? "Overview" : Model.Kind switch
     {
+        StepKind.Screenshot => "Screenshot",
         StepKind.Click => "Click",
         StepKind.RightClick => "Right-click",
         StepKind.MiddleClick => "Middle-click",

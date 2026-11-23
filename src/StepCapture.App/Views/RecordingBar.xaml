@@ -27,6 +27,8 @@
                 <TextBlock x:Name="StatusText" Text="RECORDING" Foreground="White" FontFamily="{StaticResource HeadingFont}" FontStretch="Condensed" FontWeight="SemiBold" FontSize="15" />
                 <TextBlock x:Name="CountText" Text="0 steps" Foreground="#A9B1C2" FontSize="11" />
             </StackPanel>
+            <Button x:Name="ShotButton" Content="Screenshot" Click="OnScreenshot" Style="{StaticResource ToolButton}"
+                    Background="#2C3444" Foreground="White" BorderBrush="#3A4356" />
             <Button x:Name="PauseButton" Content="Pause" Click="OnPause" Style="{StaticResource ToolButton}"
                     Background="#2C3444" Foreground="White" BorderBrush="#3A4356" />
             <Button Content="Stop" Click="OnStop" Style="{StaticResource AccentButton}" Margin="0" />

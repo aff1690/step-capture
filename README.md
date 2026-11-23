@@ -8,7 +8,13 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
 ## Features
 
 - **Recording** with a small floating bar (Pause / Stop) that stays out of its own screenshots.
-  Hotkeys: **Ctrl+Shift+F9** pauses or resumes, **Ctrl+Shift+F10** stops.
+  Hotkeys: **Ctrl+Shift+F8** takes a screenshot, **Ctrl+Shift+F9** pauses or resumes, **Ctrl+Shift+F10** stops.
+- **Screenshots without clicking**, for overviews of a screen or layout: the **Screenshot** button on the recording bar
+  or Ctrl+Shift+F8 while recording (this works while paused too). Outside recording, **Add screenshot** captures the
+  screen after 3 seconds, pastes from the clipboard (Ctrl+Shift+V, works with Snipping Tool), or adds image files.
+  You can also drop pictures onto the window.
+- **Overview steps** are shown as a heading without a step number, so a guide can open with a short tour of the
+  screen before steps 1, 2, 3. New screenshots start as overviews; tick or untick "Overview" on any step to switch.
 - **Screenshots on every click** of the monitor you clicked on, with the cursor drawn in and the click point
   highlighted. Each monitor is captured at its real resolution, including mixed-scaling setups.
 - **Automatic captions** from Windows UI Automation, such as *Click the "Save" button* or
@@ -29,7 +35,7 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
   then switch between "Letterhead" and "Blank page". Word exports are built on the template itself (header,
   footer, margins and styles); PDF and HTML exports use its header picture and footer text.
 - **Light and dark appearance**: toggle with the pill in the top-right corner. The choice is remembered; the first run follows your Windows app theme.
-- **Save / open** guides as `.stepguide` files (a zip of JSON and PNGs).
+- **Save / open** guides as `.stepguide` files (a zip of JSON and PNGs). Guides with overview steps need this version or newer to open with the overviews intact.
 - **Export** to a self-contained HTML page, Word (.docx), PDF (US Letter) or Markdown with an images folder.
 
 ## Install
