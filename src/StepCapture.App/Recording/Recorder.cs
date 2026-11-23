@@ -21,15 +21,18 @@ namespace StepCapture.App.Recording;
 /// </summary>
 internal sealed class Recorder : IDisposable
 {
-    // Hotkeys (Ctrl+Shift+F9 / F10) are handled inside the keyboard hook and never recorded.
+    // Hotkeys (Ctrl+Shift+F8 / F9 / F10) are handled inside the keyboard hook and never recorded.
+    public const int ScreenshotHotkeyVk = 0x77; // F8
     public const int PauseHotkeyVk = 0x78; // F9
     public const int StopHotkeyVk = 0x79;  // F10
+    public const string ScreenshotHotkeyText = "Ctrl+Shift+F8";
     public const string PauseHotkeyText = "Ctrl+Shift+F9";
     public const string StopHotkeyText = "Ctrl+Shift+F10";
 
     private abstract record RawEvent(DateTimeOffset Time);
     private sealed record RawClick(DateTimeOffset Time, int X, int Y, MouseButton Button, CapturedScreen Shot) : RawEvent(Time);
     private sealed record RawKey(DateTimeOffset Time, KeyAction Action, CapturedScreen? Shot) : RawEvent(Time);
+    private sealed record RawShot(DateTimeOffset Time, CapturedScreen Shot, bool DrawCursor) : RawEvent(Time);
     private sealed record RawFlush(DateTimeOffset Time) : RawEvent(Time);
 
     private readonly Dispatcher _ui;
@@ -39,11 +42,12 @@ internal sealed class Recorder : IDisposable
     private Thread? _worker;
     private volatile bool _paused;
     private volatile bool _running;
-    private bool _typingRun; // hook thread only
+    private volatile bool _typingRun; // set by the hook thread; reset by screenshots too
 
     public event Action<Step>? StepAdded;
     public event Action<Step>? StepUpdated;
     public event Action<Step>? StepRemoved;
+    public event Action? ScreenshotTaken;
     public event Action? PauseHotkeyPressed;
     public event Action? StopHotkeyPressed;
 
@@ -69,6 +73,23 @@ internal sealed class Recorder : IDisposable
                 _queue.TryAdd(new RawFlush(DateTimeOffset.Now));
             }
         }
+    }
+
+    /// <summary>
+    /// Adds a screenshot of the monitor under the cursor as an overview step, without needing a click.
+    /// Works while paused too, so you can pause, set the screen up, and take a shot.
+    /// </summary>
+    /// <param name="drawCursor">False when triggered from the recording bar, where the cursor is just on the button.</param>
+    public void CaptureScreenshot(bool drawCursor)
+    {
+        if (!_running) return;
+        GetCursorPos(out var pt);
+        _typingRun = false;
+        var shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y);
+        if (_queue.TryAdd(new RawShot(DateTimeOffset.Now, shot, drawCursor)))
+            _ui.BeginInvoke(() => ScreenshotTaken?.Invoke());
+        else
+            shot.Dispose();
     }
 
     public void Start()
@@ -121,6 +142,13 @@ internal sealed class Recorder : IDisposable
     private bool OnKeyDown(int vk, int scanCode, uint flags)
     {
         var mods = CurrentModifiers();
+
+        if (mods == (Modifiers.Ctrl | Modifiers.Shift) && vk == ScreenshotHotkeyVk)
+        {
+            try { CaptureScreenshot(drawCursor: true); }
+            catch (Exception ex) { Log.Error("Screenshot hotkey", ex); }
+            return true; // swallow the hotkey
+        }
 
         if (mods == (Modifiers.Ctrl | Modifiers.Shift) && vk is PauseHotkeyVk or StopHotkeyVk)
         {
@@ -227,6 +255,14 @@ internal sealed class Recorder : IDisposable
                     if (k.Shot is not null)
                         png = Annotator.RenderFocus(k.Shot, k.Action.Kind == KeyActionKind.Text ? focus.Bounds : null);
                     _builder.OnKey(new KeyInput(k.Time, k.Action, focus.Info, png));
+                }
+                break;
+
+            case RawShot shot:
+                using (shot.Shot)
+                {
+                    string? app = ElementInspector.Focused().Info?.AppName; // the app in front, for the caption
+                    _builder.OnScreenshot(shot.Time, Annotator.RenderPlain(shot.Shot, shot.DrawCursor), app);
                 }
                 break;
 

@@ -6,4 +6,21 @@ public sealed class Guide
     public string Description { get; set; } = "";
     public DateTimeOffset Created { get; set; } = DateTimeOffset.Now;
     public List<Step> Steps { get; set; } = new();
+
+    /// <summary>
+    /// The number shown for each step, in order: 1, 2, 3... for regular steps and null for overview steps,
+    /// which don't count.
+    /// </summary>
+    public IReadOnlyList<int?> StepNumbers() => Numbers(Steps);
+
+    public static IReadOnlyList<int?> Numbers(IEnumerable<Step> steps)
+    {
+        var result = new List<int?>();
+        int n = 0;
+        foreach (var s in steps) result.Add(s.IsOverview ? null : ++n);
+        return result;
+    }
+
+    /// <summary>Number of regular (numbered) steps.</summary>
+    public int NumberedStepCount => Steps.Count(s => !s.IsOverview);
 }

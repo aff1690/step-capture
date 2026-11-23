@@ -26,6 +26,7 @@ public sealed class PdfExporter : IGuideExporter
         var metaFont = new XFont(Family, 10, XFontStyleEx.Regular);
         var captionFont = new XFont(Family, 13, XFontStyleEx.Bold);
         var numFont = new XFont(Family, 10, XFontStyleEx.Bold);
+        var overviewFont = new XFont(Family, 16, XFontStyleEx.Bold);
         var bodyFont = new XFont(Family, 11, XFontStyleEx.Regular);
         var accent = new XSolidBrush(XColor.FromArgb(0xE8, 0x59, 0x0C));
         var muted = new XSolidBrush(XColor.FromArgb(0x5B, 0x64, 0x75));
@@ -35,7 +36,7 @@ public sealed class PdfExporter : IGuideExporter
         double width = page.ContentWidth;
 
         page.DrawLines(Wrap(page.Gfx, guide.Title, titleFont, width), titleFont, XBrushes.Black, 28);
-        page.DrawLines(new[] { $"{guide.Steps.Count} steps · {guide.Created:MMMM d, yyyy}" }, metaFont, muted, 14);
+        page.DrawLines(new[] { $"{guide.NumberedStepCount} steps · {guide.Created:MMMM d, yyyy}" }, metaFont, muted, 14);
         page.Y += 6;
         if (!string.IsNullOrWhiteSpace(guide.Description))
         {
@@ -43,17 +44,22 @@ public sealed class PdfExporter : IGuideExporter
             page.Y += 8;
         }
 
-        int n = 0;
-        foreach (var step in guide.Steps)
+        var numbers = guide.StepNumbers();
+        for (int i = 0; i < guide.Steps.Count; i++)
         {
-            n++;
-            const double badge = 20, gap = 8;
-            var captionLines = Wrap(page.Gfx, step.Caption, captionFont, width - badge - gap);
+            var step = guide.Steps[i];
+            int? n = numbers[i];
+            bool overview = n is null;
+            // Overview steps: a larger heading with no number badge, text aligned to the margin.
+            double badge = overview ? 0 : 20, gap = overview ? 0 : 8;
+            var capFont = overview ? overviewFont : captionFont;
+            double capLine = overview ? 20 : 17;
+            var captionLines = Wrap(page.Gfx, step.Caption, capFont, width - badge - gap);
             var noteLines = string.IsNullOrWhiteSpace(step.Notes)
                 ? new List<string>()
                 : Wrap(page.Gfx, step.Notes.Trim(), bodyFont, width - badge - gap);
 
-            double textHeight = Math.Max(badge, captionLines.Count * 17) + noteLines.Count * 15;
+            double textHeight = Math.Max(badge, captionLines.Count * capLine) + noteLines.Count * 15;
             XImage? image = null;
             double imgW = 0, imgH = 0;
             if (step.ImagePng is { Length: > 0 } png)
@@ -67,20 +73,24 @@ public sealed class PdfExporter : IGuideExporter
             }
 
             // Keep a step's caption and its screenshot on the same page.
-            page.EnsureSpace(18 + textHeight + (image is null ? 0 : imgH + 10));
-            page.Y += 18;
+            double spaceAbove = overview ? 24 : 18;
+            page.EnsureSpace(spaceAbove + textHeight + (image is null ? 0 : imgH + 10));
+            page.Y += spaceAbove;
 
             double top = page.Y;
-            page.Gfx.DrawEllipse(accent, page.Left, top, badge, badge);
-            page.Gfx.DrawString(n.ToString(), numFont, XBrushes.White,
-                new XRect(page.Left, top, badge, badge), XStringFormats.Center);
+            if (!overview)
+            {
+                page.Gfx.DrawEllipse(accent, page.Left, top, badge, badge);
+                page.Gfx.DrawString(n!.Value.ToString(), numFont, XBrushes.White,
+                    new XRect(page.Left, top, badge, badge), XStringFormats.Center);
+            }
 
             double textX = page.Left + badge + gap;
-            double y = top + 2;
+            double y = top + (overview ? 0 : 2);
             foreach (var line in captionLines)
             {
-                page.Gfx.DrawString(line, captionFont, XBrushes.Black, new XRect(textX, y, width, 17), XStringFormats.TopLeft);
-                y += 17;
+                page.Gfx.DrawString(line, capFont, XBrushes.Black, new XRect(textX, y, width, capLine), XStringFormats.TopLeft);
+                y += capLine;
             }
             foreach (var line in noteLines)
             {

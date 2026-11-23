@@ -34,6 +34,18 @@ internal static class Annotator
         return ToPng(bmp);
     }
 
+    /// <summary>The screenshot as is, optionally with the cursor drawn in, as a PNG.</summary>
+    public static byte[] RenderPlain(CapturedScreen shot, bool drawCursor)
+    {
+        var bmp = shot.Bitmap;
+        if (drawCursor)
+        {
+            using var g = Graphics.FromImage(bmp);
+            DrawCursor(g, shot);
+        }
+        return ToPng(bmp);
+    }
+
     /// <summary>Outlines the focused control (if known) and returns a PNG.</summary>
     public static byte[] RenderFocus(CapturedScreen shot, Rectangle? screenBounds)
     {

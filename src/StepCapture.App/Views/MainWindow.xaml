@@ -70,13 +70,29 @@
                                 </Button.ContextMenu>
                             </Button>
                         </StackPanel>
-                        <Button x:Name="RecordButton" Style="{StaticResource AccentButton}" Click="OnRecord" Margin="0,10,0,0"
-                                HorizontalAlignment="Right" Padding="20,8" ToolTip="Start capturing clicks and keystrokes">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="10" Height="10" Fill="#E5484D" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                <TextBlock Text="Record" FontSize="14" />
-                            </StackPanel>
-                        </Button>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button x:Name="AddShotButton" Style="{StaticResource ToolButton}" Click="OnAddScreenshotMenu" Padding="14,8"
+                                    ToolTip="Add a screenshot without recording: capture the screen, paste from the clipboard, or pick an image file">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Add screenshot" FontSize="14" />
+                                    <TextBlock Text=" ▾" Foreground="{DynamicResource MutedBrush}" FontSize="14" />
+                                </StackPanel>
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="AddShotMenu">
+                                        <MenuItem Header="Capture the screen in 3 seconds" Click="OnCaptureTimed" />
+                                        <MenuItem Header="Paste from clipboard" Click="OnPasteScreenshot" InputGestureText="Ctrl+Shift+V" />
+                                        <MenuItem Header="From an image file…" Click="OnImportImage" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            <Button x:Name="RecordButton" Style="{StaticResource AccentButton}" Click="OnRecord" Margin="0"
+                                    Padding="20,8" ToolTip="Start capturing clicks and keystrokes">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="10" Height="10" Fill="#E5484D" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Record" FontSize="14" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel VerticalAlignment="Center">
                         <TextBox x:Name="TitleBox" Style="{StaticResource BareTextBox}" FontFamily="{StaticResource HeadingFont}"
@@ -144,7 +160,7 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AccentBrush}" VerticalAlignment="Top">
-                                    <TextBlock Text="{Binding Number}" Foreground="{DynamicResource AccentForegroundBrush}" FontWeight="Bold" FontSize="11"
+                                    <TextBlock Text="{Binding BadgeText}" Foreground="{DynamicResource AccentForegroundBrush}" FontWeight="Bold" FontSize="11"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <Border Grid.Column="1" Width="100" Height="58" Margin="10,0" CornerRadius="6"
@@ -170,7 +186,7 @@
                         <TextBlock Text="NO STEPS YET" Style="{StaticResource HeadingText}" FontSize="28" HorizontalAlignment="Center" />
                         <TextBlock Foreground="{DynamicResource BodyBrush}" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,8,0,18"
                                    TextWrapping="Wrap" MaxWidth="440" FontSize="14"
-                                   Text="Click Record, do the task the way you'd show a colleague, then click Stop. Every click and every bit of typing becomes a step with a screenshot." />
+                                   Text="Click Record, do the task the way you'd show a colleague, then click Stop. Every click and every bit of typing becomes a step with a screenshot. Use Add screenshot for overview shots of a screen without clicking." />
                         <Button Style="{StaticResource AccentButton}" Click="OnRecord" HorizontalAlignment="Center" Padding="20,9">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse Width="10" Height="10" Fill="#E5484D" Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -206,6 +222,10 @@
                             <TextBlock Text="CAPTION" Style="{StaticResource FieldLabel}" />
                             <TextBox x:Name="CaptionBox" FontSize="14" TextWrapping="Wrap"
                                      Text="{Binding Caption, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnStepTextChanged" />
+                            <CheckBox x:Name="OverviewBox" Margin="0,8,0,0" IsChecked="{Binding IsOverview, Mode=TwoWay}"
+                                      Click="OnOverviewToggled" Foreground="{DynamicResource BodyBrush}"
+                                      Content="Overview (shown as a heading, without a step number)"
+                                      ToolTip="Use for screenshots that explain a screen or layout rather than an action" />
                             <TextBlock Text="NOTES (OPTIONAL)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
                             <TextBox x:Name="NotesBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="46" MaxHeight="110"
                                      VerticalScrollBarVisibility="Auto"
