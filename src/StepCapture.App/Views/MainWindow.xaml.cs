@@ -147,6 +147,11 @@ public partial class MainWindow : Window
         if (!_loading) SetDirty(true);
     }
 
+    private void OnNotesEdited()
+    {
+        if (!_loading) SetDirty(true);
+    }
+
     private void OnStepTextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_loading && ((TextBox)sender).IsKeyboardFocusWithin) SetDirty(true);
@@ -506,7 +511,11 @@ public partial class MainWindow : Window
     private void OnOpen(object sender, RoutedEventArgs e)
     {
         if (_recorder is not null || !ConfirmDiscard()) return;
-        var dlg = new OpenFileDialog { Filter = $"StepCapture guide (*{GuideFile.Extension})|*{GuideFile.Extension}" };
+        var dlg = new OpenFileDialog
+        {
+            Filter = $"StepCapture guide (*{GuideFile.Extension})|*{GuideFile.Extension}",
+            InitialDirectory = AppSettings.Current.DefaultFolderIfExists ?? "",
+        };
         if (dlg.ShowDialog(this) == true) OpenFile(dlg.FileName);
     }
 
@@ -549,6 +558,8 @@ public partial class MainWindow : Window
             {
                 Filter = $"StepCapture guide (*{GuideFile.Extension})|*{GuideFile.Extension}",
                 FileName = SafeFileName(TitleBox.Text) + GuideFile.Extension,
+                // Save as keeps a saved guide's folder; new guides start in the default folder.
+                InitialDirectory = (path is not null ? Path.GetDirectoryName(path) : null) ?? AppSettings.Current.DefaultFolderIfExists ?? "",
             };
             if (dlg.ShowDialog(this) != true) return false;
             path = dlg.FileName;
@@ -602,6 +613,53 @@ public partial class MainWindow : Window
         var choose = new MenuItem { Header = "      " + (hasTemplate ? "Change letterhead template…" : "Choose letterhead template…") };
         choose.Click += (_, _) => ChooseLetterhead();
         ExportMenu.Items.Add(choose);
+    }
+
+    // ---------------- settings ----------------
+
+    private void OnSettingsMenu(object sender, RoutedEventArgs e)
+    {
+        var settings = AppSettings.Current;
+        SettingsMenu.Items.Clear();
+        SettingsMenu.Items.Add(new MenuItem
+        {
+            Header = new TextBlock { Text = "DEFAULT SAVE FOLDER", FontSize = 11, Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush") },
+            IsEnabled = false,
+        });
+        string? folder = settings.DefaultFolder;
+        SettingsMenu.Items.Add(new MenuItem
+        {
+            Header = folder is null ? "Not set (Windows remembers the last folder)"
+                : Directory.Exists(folder) ? folder : folder + "  (not found)",
+            IsEnabled = false,
+        });
+        var choose = new MenuItem { Header = folder is null ? "Choose default folder…" : "Change default folder…" };
+        choose.Click += (_, _) => ChooseDefaultFolder();
+        SettingsMenu.Items.Add(choose);
+        if (folder is not null)
+        {
+            var open = new MenuItem { Header = "Open folder", IsEnabled = Directory.Exists(folder) };
+            open.Click += (_, _) => Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+            SettingsMenu.Items.Add(open);
+            var clear = new MenuItem { Header = "Stop using a default folder" };
+            clear.Click += (_, _) => { settings.DefaultFolder = null; settings.Save(); };
+            SettingsMenu.Items.Add(clear);
+        }
+        SettingsMenu.PlacementTarget = SettingsButton;
+        SettingsMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        SettingsMenu.IsOpen = true;
+    }
+
+    private void ChooseDefaultFolder()
+    {
+        var dlg = new OpenFolderDialog
+        {
+            Title = "Choose where guides and exports are saved by default",
+            InitialDirectory = AppSettings.Current.DefaultFolderIfExists ?? "",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        AppSettings.Current.DefaultFolder = dlg.FolderName;
+        AppSettings.Current.Save();
     }
 
     private void ChooseLetterhead()
@@ -659,6 +717,7 @@ public partial class MainWindow : Window
         {
             Filter = $"{exporter.Name} (*{exporter.Extension})|*{exporter.Extension}",
             FileName = SafeFileName(TitleBox.Text) + exporter.Extension,
+            InitialDirectory = AppSettings.Current.DefaultFolderIfExists ?? "",
         };
         if (dlg.ShowDialog(this) != true) return;
 

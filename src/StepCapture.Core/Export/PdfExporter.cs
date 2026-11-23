@@ -36,7 +36,7 @@ public sealed class PdfExporter : IGuideExporter
         double width = page.ContentWidth;
 
         page.DrawLines(Wrap(page.Gfx, guide.Title, titleFont, width), titleFont, XBrushes.Black, 28);
-        page.DrawLines(new[] { $"{guide.NumberedStepCount} steps · {guide.Created:MMMM d, yyyy}" }, metaFont, muted, 14);
+        page.DrawLines(new[] { $"{guide.StepCountText} · {guide.Created:MMMM d, yyyy}" }, metaFont, muted, 14);
         page.Y += 6;
         if (!string.IsNullOrWhiteSpace(guide.Description))
         {
@@ -56,8 +56,8 @@ public sealed class PdfExporter : IGuideExporter
             double capLine = overview ? 20 : 17;
             var captionLines = Wrap(page.Gfx, step.Caption, capFont, width - badge - gap);
             var noteLines = string.IsNullOrWhiteSpace(step.Notes)
-                ? new List<string>()
-                : Wrap(page.Gfx, step.Notes.Trim(), bodyFont, width - badge - gap);
+                ? new List<NoteRow>()
+                : LayoutNotes(page.Gfx, step, width - badge - gap);
 
             double textHeight = Math.Max(badge, captionLines.Count * capLine) + noteLines.Count * 15;
             XImage? image = null;
@@ -92,9 +92,9 @@ public sealed class PdfExporter : IGuideExporter
                 page.Gfx.DrawString(line, capFont, XBrushes.Black, new XRect(textX, y, width, capLine), XStringFormats.TopLeft);
                 y += capLine;
             }
-            foreach (var line in noteLines)
+            foreach (var row in noteLines)
             {
-                page.Gfx.DrawString(line, bodyFont, muted, new XRect(textX, y, width, 15), XStringFormats.TopLeft);
+                DrawNoteRow(page.Gfx, row, textX, y, muted);
                 y += 15;
             }
             page.Y = Math.Max(y, top + badge);
@@ -111,6 +111,135 @@ public sealed class PdfExporter : IGuideExporter
 
         page.Finish();
         doc.Save(path);
+    }
+
+    // ---------------- formatted notes ----------------
+
+    private const double NoteLineHeight = 15, NoteIndent = 18, NoteBadge = 15, NoteBadgeGap = 5;
+
+    private sealed record NoteFrag(string Text, XFont Font, bool Underline, double X, double Width);
+
+    private sealed record NoteRow(List<NoteFrag> Frags, double TextX, int? BadgeNumber, uint BadgeColor, double BadgeX);
+
+    private static readonly Dictionary<(bool, bool), XFont> NoteFonts = new();
+
+    private static XFont NoteFont(bool bold, bool italic)
+    {
+        lock (NoteFonts)
+        {
+            if (!NoteFonts.TryGetValue((bold, italic), out var f))
+            {
+                var style = (bold, italic) switch
+                {
+                    (true, true) => XFontStyleEx.BoldItalic,
+                    (true, false) => XFontStyleEx.Bold,
+                    (false, true) => XFontStyleEx.Italic,
+                    _ => XFontStyleEx.Regular,
+                };
+                NoteFonts[(bold, italic)] = f = new XFont(Family, 11, style);
+            }
+            return f;
+        }
+    }
+
+    /// <summary>
+    /// Wraps formatted note lines to a width. Indented lines start further right; a line that starts with
+    /// the number of a callout on the screenshot gets a round badge in the callout's color, and its wrapped
+    /// lines hang under the text rather than under the badge.
+    /// </summary>
+    private static List<NoteRow> LayoutNotes(XGraphics gfx, Step step, double width)
+    {
+        var rows = new List<NoteRow>();
+        var colors = RichText.CalloutColors(step);
+        foreach (var line in RichText.Parse(step.Notes))
+        {
+            double baseX = Math.Min(line.Indent * NoteIndent, width / 2);
+            var content = line;
+            int? badge = null;
+            uint badgeColor = 0;
+            if (RichText.TryLeadingNumber(line, out int n, out var rest) && colors.TryGetValue(n, out uint argb))
+            {
+                content = rest;
+                badge = n;
+                badgeColor = argb;
+            }
+            double textX = baseX + (badge is null ? 0 : NoteBadge + NoteBadgeGap);
+            double avail = Math.Max(40, width - textX);
+
+            var frags = new List<NoteFrag>();
+            double x = 0, pendingSpace = 0;
+            bool first = true;
+            void NewRow()
+            {
+                rows.Add(new NoteRow(frags, textX, first ? badge : null, badgeColor, baseX));
+                frags = new List<NoteFrag>();
+                x = 0;
+                pendingSpace = 0;
+                first = false;
+            }
+
+            foreach (var span in content.Spans)
+            {
+                var font = NoteFont(span.Bold, span.Italic);
+                foreach (var token in System.Text.RegularExpressions.Regex.Split(span.Text, @"(\s+)"))
+                {
+                    if (token.Length == 0) continue;
+                    if (char.IsWhiteSpace(token[0]))
+                    {
+                        if (frags.Count > 0) pendingSpace += gfx.MeasureString(token.Replace('\t', ' '), font).Width;
+                        continue;
+                    }
+                    string word = token;
+                    double w = gfx.MeasureString(word, font).Width;
+                    if (frags.Count > 0 && x + pendingSpace + w > avail) NewRow();
+                    // Hard-break a single word that is wider than the line.
+                    while (w > avail && word.Length > 1)
+                    {
+                        int cut = word.Length - 1;
+                        while (cut > 1 && gfx.MeasureString(word[..cut], font).Width > avail) cut--;
+                        frags.Add(new NoteFrag(word[..cut], font, span.Underline, x, gfx.MeasureString(word[..cut], font).Width));
+                        NewRow();
+                        word = word[cut..];
+                        w = gfx.MeasureString(word, font).Width;
+                    }
+                    if (frags.Count > 0)
+                    {
+                        // Underline the space too when both sides are underlined, so it reads as one line.
+                        var prev = frags[^1];
+                        if (prev.Underline && span.Underline && pendingSpace > 0)
+                            frags[^1] = prev with { Width = prev.Width + pendingSpace };
+                        x += pendingSpace;
+                    }
+                    pendingSpace = 0;
+                    frags.Add(new NoteFrag(word, font, span.Underline, x, w));
+                    x += w;
+                }
+            }
+            NewRow(); // also emits an empty row for a blank line
+        }
+        return rows;
+    }
+
+    private static void DrawNoteRow(XGraphics gfx, NoteRow row, double left, double y, XBrush brush)
+    {
+        if (row.BadgeNumber is int n)
+        {
+            var color = XColor.FromArgb(255, (int)((row.BadgeColor >> 16) & 0xFF), (int)((row.BadgeColor >> 8) & 0xFF), (int)(row.BadgeColor & 0xFF));
+            double bx = left + row.BadgeX, by = y + (NoteLineHeight - NoteBadge) / 2;
+            string label = n.ToString();
+            var font = new XFont(Family, label.Length > 1 ? 7.5 : 8.5, XFontStyleEx.Bold);
+            double bw = Math.Max(NoteBadge, gfx.MeasureString(label, font).Width + 6);
+            gfx.DrawRoundedRectangle(new XSolidBrush(color), bx, by, bw, NoteBadge, NoteBadge, NoteBadge);
+            gfx.DrawString(label, font, MarkupGeometry.IsLight(row.BadgeColor) ? XBrushes.Black : XBrushes.White,
+                new XRect(bx, by, bw, NoteBadge), XStringFormats.Center);
+        }
+        var pen = new XPen(((XSolidBrush)brush).Color, 0.6);
+        foreach (var f in row.Frags)
+        {
+            double fx = left + row.TextX + f.X;
+            gfx.DrawString(f.Text, f.Font, brush, new XRect(fx, y, f.Width + 2, NoteLineHeight), XStringFormats.TopLeft);
+            if (f.Underline) gfx.DrawLine(pen, fx, y + 12.8, fx + f.Width, y + 12.8);
+        }
     }
 
     /// <summary>Word-wraps text to a width, honoring explicit line breaks.</summary>

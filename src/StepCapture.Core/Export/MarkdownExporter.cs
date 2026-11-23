@@ -30,7 +30,12 @@ public sealed class MarkdownExporter : IGuideExporter
             if (n is null) sb.Append("## ").Append(EscapeInline(step.Caption)).Append('\n');
             else sb.Append(n).Append(". ").Append(EscapeInline(step.Caption)).Append('\n');
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                sb.Append('\n').Append(indent).Append(step.Notes.Trim().Replace("\n", "\n" + indent)).Append('\n');
+            {
+                // Two trailing spaces keep each note line on its own line in Markdown viewers.
+                var noteLines = RichText.Parse(step.Notes)
+                    .Select(l => indent + new string(' ', l.Indent * 4) + InlineMarkdown(l.Spans));
+                sb.Append('\n').Append(string.Join("  \n", noteLines)).Append('\n');
+            }
             if (step.ImagePng is { Length: > 0 } png)
             {
                 Directory.CreateDirectory(imageDir);
@@ -43,6 +48,24 @@ public sealed class MarkdownExporter : IGuideExporter
         }
 
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+    }
+
+    /// <summary>Bold and italic as Markdown; underline has no Markdown syntax, so it uses &lt;u&gt;.</summary>
+    private static string InlineMarkdown(IEnumerable<RichSpan> spans)
+    {
+        var sb = new StringBuilder();
+        foreach (var s in spans)
+        {
+            string core = s.Text.Trim();
+            if (core.Length == 0 || (!s.Bold && !s.Italic && !s.Underline)) { sb.Append(EscapeInline(s.Text)); continue; }
+            int lead = s.Text.Length - s.Text.TrimStart().Length, trail = s.Text.Length - s.Text.TrimEnd().Length;
+            string t = EscapeInline(core);
+            if (s.Italic) t = $"*{t}*";
+            if (s.Bold) t = $"**{t}**";
+            if (s.Underline) t = $"<u>{t}</u>";
+            sb.Append(s.Text[..lead]).Append(t).Append(s.Text[^trail..]);
+        }
+        return sb.ToString();
     }
 
     private static string EscapeInline(string s) =>

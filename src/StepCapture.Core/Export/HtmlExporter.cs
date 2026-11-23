@@ -43,7 +43,10 @@ public sealed class HtmlExporter : IGuideExporter
               li.overview { border-left:4px solid var(--accent); }
               li.overview .cap { font-size:19px; padding-top:0; }
               li.overview .notes { margin-left:0; }
-              .notes { color:var(--muted); margin:6px 0 0 42px; white-space:pre-wrap; }
+              .notes { color:var(--muted); margin:6px 0 0 42px; }
+              .notes p { margin:0; min-height:1.5em; white-space:pre-wrap; }
+              .badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 4px;
+                       border-radius:11px; font-weight:700; font-size:12px; margin-right:6px; vertical-align:1px; }
               .letterhead img { border:0; border-radius:0; margin:0 0 24px; }
               .footer { color:var(--muted); font-size:13px; text-align:center; margin-top:32px; white-space:pre-line; }
               img { display:block; max-width:100%; height:auto; margin:12px 0 0; border:1px solid var(--line); border-radius:6px; }
@@ -57,7 +60,7 @@ public sealed class HtmlExporter : IGuideExporter
         if (letterhead?.HeaderImage is { Length: > 0 } banner)
             sb.Append($"<div class=\"letterhead\"><img alt=\"\" src=\"data:{letterhead.HeaderImageType};base64,{Convert.ToBase64String(banner)}\"></div>\n");
         sb.Append($"<h1>{E(guide.Title)}</h1>\n");
-        sb.Append($"<p class=\"meta\">{guide.NumberedStepCount} steps · {E(guide.Created.ToString("MMMM d, yyyy"))}</p>\n");
+        sb.Append($"<p class=\"meta\">{guide.StepCountText} · {E(guide.Created.ToString("MMMM d, yyyy"))}</p>\n");
         if (!string.IsNullOrWhiteSpace(guide.Description))
             sb.Append($"<p class=\"desc\">{E(guide.Description)}</p>\n");
         sb.Append("<ol>\n");
@@ -70,7 +73,7 @@ public sealed class HtmlExporter : IGuideExporter
             if (n is not null) sb.Append($"<span class=\"num\">{n}</span>");
             sb.Append($"<span class=\"cap\">{E(step.Caption)}</span></div>\n");
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                sb.Append($"<p class=\"notes\">{E(step.Notes)}</p>\n");
+                sb.Append(RenderNotes(step));
             if (step.ImagePng is { Length: > 0 } png)
                 sb.Append($"<img alt=\"{(n is null ? "" : $"Step {n}: ")}{E(step.Caption)}\" src=\"data:image/png;base64,{Convert.ToBase64String(png)}\">\n");
             sb.Append("</li>\n");
@@ -80,5 +83,35 @@ public sealed class HtmlExporter : IGuideExporter
             sb.Append($"<p class=\"footer\">{E(letterhead.FooterText)}</p>\n");
         sb.Append("</main>\n</body>\n</html>\n");
         return sb.ToString();
+    }
+
+    /// <summary>Notes with formatting and indentation; numbered lines get the matching callout's badge.</summary>
+    internal static string RenderNotes(Step step)
+    {
+        static string E(string s) => WebUtility.HtmlEncode(s);
+        var colors = RichText.CalloutColors(step);
+        var sb = new StringBuilder("<div class=\"notes\">");
+        foreach (var line in RichText.Parse(step.Notes))
+        {
+            var content = line;
+            string badge = "";
+            if (RichText.TryLeadingNumber(line, out int n, out var rest) && colors.TryGetValue(n, out uint argb))
+            {
+                content = rest;
+                string bg = $"#{argb & 0xFFFFFF:X6}", fg = MarkupGeometry.IsLight(argb) ? "#1d2330" : "#fff";
+                badge = $"<span class=\"badge\" style=\"background:{bg};color:{fg}\">{n}</span>";
+            }
+            sb.Append(line.Indent > 0 ? $"<p style=\"padding-left:{line.Indent * 24}px\">" : "<p>").Append(badge);
+            foreach (var span in content.Spans)
+            {
+                string t = E(span.Text);
+                if (span.Italic) t = $"<em>{t}</em>";
+                if (span.Bold) t = $"<strong>{t}</strong>";
+                if (span.Underline) t = $"<u>{t}</u>";
+                sb.Append(t);
+            }
+            sb.Append("</p>");
+        }
+        return sb.Append("</div>\n").ToString();
     }
 }

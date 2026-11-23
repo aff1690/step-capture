@@ -27,7 +27,7 @@ public sealed class DocxExporter : IGuideExporter
         var (maxWidth, maxHeight) = ImageArea(section);
 
         section.InsertBeforeSelf(TextParagraph(guide.Title, sizeHalfPoints: 40, bold: true, spacingAfter: 120));
-        section.InsertBeforeSelf(TextParagraph($"{guide.NumberedStepCount} steps · {guide.Created:MMMM d, yyyy}",
+        section.InsertBeforeSelf(TextParagraph($"{guide.StepCountText} · {guide.Created:MMMM d, yyyy}",
             sizeHalfPoints: 20, color: "5B6475", spacingAfter: 240));
         if (!string.IsNullOrWhiteSpace(guide.Description))
             section.InsertBeforeSelf(TextParagraph(guide.Description.Trim(), spacingAfter: 240));
@@ -50,7 +50,8 @@ public sealed class DocxExporter : IGuideExporter
             section.InsertBeforeSelf(caption);
 
             if (!string.IsNullOrWhiteSpace(step.Notes))
-                section.InsertBeforeSelf(TextParagraph(step.Notes.Trim(), color: "5B6475", spacingAfter: 80, keepNext: step.ImagePng is not null));
+                foreach (var p in NoteParagraphs(step, keepWithImage: step.ImagePng is not null))
+                    section.InsertBeforeSelf(p);
 
             if (step.ImagePng is { Length: > 0 } png)
                 section.InsertBeforeSelf(ImageParagraph(main, png, imageId++, n is null ? "Overview" : $"Step {n}", maxWidth, maxHeight));
@@ -102,12 +103,47 @@ public sealed class DocxExporter : IGuideExporter
         return (width, height);
     }
 
-    private static Run Run(string text, bool bold = false, string? color = null, int? sizeHalfPoints = null)
+    /// <summary>
+    /// One paragraph per note line, indented by level, with bold/italic/underline. A line starting with the
+    /// number of a callout on the screenshot gets that number as a circled badge in the callout's color.
+    /// </summary>
+    private static IEnumerable<Paragraph> NoteParagraphs(Step step, bool keepWithImage)
+    {
+        var colors = RichText.CalloutColors(step);
+        var lines = RichText.Parse(step.Notes);
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            var pp = new ParagraphProperties();
+            if (keepWithImage || i < lines.Count - 1) pp.Append(new KeepNext());
+            pp.Append(new SpacingBetweenLines { After = i == lines.Count - 1 ? "80" : "0" });
+            if (line.Indent > 0) pp.Append(new Indentation { Left = (line.Indent * 360).ToString() });
+            var para = new Paragraph(pp);
+
+            var content = line;
+            if (RichText.TryLeadingNumber(line, out int n, out var rest) && colors.TryGetValue(n, out uint argb))
+            {
+                content = rest;
+                string badge = n is >= 1 and <= 20 ? ((char)(0x2460 + n - 1)).ToString() : $"({n})";
+                var r = Run(badge + " ", bold: true, color: $"{argb & 0xFFFFFF:X6}", sizeHalfPoints: 26);
+                r.RunProperties!.RunFonts = new RunFonts { Ascii = "Segoe UI Symbol", HighAnsi = "Segoe UI Symbol", ComplexScript = "Segoe UI Symbol" };
+                para.Append(r);
+            }
+            foreach (var span in content.Spans)
+                para.Append(Run(span.Text, span.Bold, "5B6475", italic: span.Italic, underline: span.Underline));
+            yield return para;
+        }
+    }
+
+    private static Run Run(string text, bool bold = false, string? color = null, int? sizeHalfPoints = null,
+        bool italic = false, bool underline = false)
     {
         var props = new RunProperties(new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", ComplexScript = "Segoe UI" });
         if (bold) props.Append(new Bold());
+        if (italic) props.Append(new Italic());
         if (color is not null) props.Append(new Color { Val = color });
         if (sizeHalfPoints is { } s) props.Append(new FontSize { Val = s.ToString() });
+        if (underline) props.Append(new Underline { Val = UnderlineValues.Single }); // schema order: after sz
 
         var run = new Run(props);
         var lines = text.Replace("\r\n", "\n").Split('\n');

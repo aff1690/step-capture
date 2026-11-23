@@ -17,6 +17,12 @@ internal sealed class AppSettings
     /// <summary>True to export on the letterhead, false for a blank page.</summary>
     public bool UseLetterhead { get; set; }
 
+    /// <summary>Folder that Save, Open and Export dialogs start in (null: Windows picks).</summary>
+    public string? DefaultFolder { get; set; }
+
+    /// <summary>The default folder if it is set and still exists.</summary>
+    public string? DefaultFolderIfExists => DefaultFolder is { } f && Directory.Exists(f) ? f : null;
+
     public static AppSettings Current { get; } = Load();
 
     private static AppSettings Load()
