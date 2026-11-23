@@ -1,0 +1,29 @@
+<UserControl x:Class="StepCapture.App.Views.NotesEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+            <Button Style="{StaticResource FormatButton}" Click="OnBold" ToolTip="Bold (Ctrl+B)">
+                <TextBlock Text="B" FontWeight="Bold" />
+            </Button>
+            <Button Style="{StaticResource FormatButton}" Click="OnItalic" ToolTip="Italic (Ctrl+I)">
+                <TextBlock Text="I" FontStyle="Italic" FontFamily="Georgia" />
+            </Button>
+            <Button Style="{StaticResource FormatButton}" Click="OnUnderline" ToolTip="Underline (Ctrl+U)">
+                <TextBlock Text="U" TextDecorations="Underline" />
+            </Button>
+            <Rectangle Width="1" Margin="4,3,8,3" Fill="{DynamicResource LineBrush}" />
+            <Button Style="{StaticResource FormatButton}" Click="OnOutdent" ToolTip="Decrease indent (Shift+Tab)">
+                <TextBlock Text="⇤" FontFamily="Segoe UI Symbol" />
+            </Button>
+            <Button Style="{StaticResource FormatButton}" Click="OnIndent" ToolTip="Increase indent (Tab)">
+                <TextBlock Text="⇥" FontFamily="Segoe UI Symbol" />
+            </Button>
+            <TextBlock Text="Lines starting with 1. 2. 3. get the matching callout badge in exports."
+                       Foreground="{DynamicResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"
+                       TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <RichTextBox x:Name="Box" AcceptsReturn="True" AcceptsTab="True" VerticalScrollBarVisibility="Auto"
+                     MinHeight="46" TextChanged="OnTextChanged" PreviewKeyDown="OnPreviewKeyDown" />
+    </DockPanel>
+</UserControl>

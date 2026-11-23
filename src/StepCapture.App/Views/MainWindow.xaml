@@ -59,6 +59,13 @@
                             <Button Content="Open…" Style="{StaticResource ToolButton}" Click="OnOpen" ToolTip="Open a .stepguide file (Ctrl+O)" />
                             <Button Content="Save" Style="{StaticResource ToolButton}" Click="OnSave" ToolTip="Save (Ctrl+S)" />
                             <Button Content="Save as…" Style="{StaticResource ToolButton}" Click="OnSaveAs" />
+                            <Button x:Name="SettingsButton" Style="{StaticResource ToolButton}" Click="OnSettingsMenu"
+                                    ToolTip="Settings: default save folder">
+                                <TextBlock Text="⚙" FontFamily="Segoe UI Symbol" />
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="SettingsMenu" />
+                                </Button.ContextMenu>
+                            </Button>
                             <Button x:Name="ExportButton" Style="{StaticResource ToolButton}" Click="OnExportMenu" Margin="0"
                                     ToolTip="Export to HTML, Word, PDF or Markdown">
                                 <StackPanel Orientation="Horizontal">
@@ -223,9 +230,8 @@
                                       Content="Overview (shown as a heading, without a step number)"
                                       ToolTip="Use for screenshots that explain a screen or layout rather than an action" />
                             <TextBlock Text="NOTES (OPTIONAL)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                            <TextBox x:Name="NotesBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="46" MaxHeight="110"
-                                     VerticalScrollBarVisibility="Auto"
-                                     Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnStepTextChanged" />
+                            <local:NotesEditor x:Name="NotesBox" MaxHeight="190" Text="{Binding Notes, Mode=TwoWay}"
+                                               UserEdited="OnNotesEdited" />
                         </StackPanel>
 
                         <local:ScreenshotEditor x:Name="Editor" Grid.Row="2" Grid.RowSpan="2" Margin="0,16,0,0"

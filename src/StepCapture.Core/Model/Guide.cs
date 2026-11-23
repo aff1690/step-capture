@@ -23,4 +23,7 @@ public sealed class Guide
 
     /// <summary>Number of regular (numbered) steps.</summary>
     public int NumberedStepCount => Steps.Count(s => !s.IsOverview);
+
+    /// <summary>"1 step", "5 steps".</summary>
+    public string StepCountText => NumberedStepCount == 1 ? "1 step" : $"{NumberedStepCount} steps";
 }
