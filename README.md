@@ -32,21 +32,31 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
 - **Save / open** guides as `.stepguide` files (a zip of JSON and PNGs).
 - **Export** to a self-contained HTML page, Word (.docx), PDF (US Letter) or Markdown with an images folder.
 
-## Download and run (no build needed)
+## Install
 
 Every push to GitHub builds the app on a Windows machine with GitHub Actions.
 
 1. Open the repository on GitHub and go to **Actions → Build**, then click the most recent successful run.
-2. Under **Artifacts**, download one of these:
-   - **StepCapture-win-x64**: a single `StepCapture.exe` (about 75 MB) that runs on any 64-bit Windows 10/11 PC
-     with nothing else installed. Start with this one.
-   - **StepCapture-win-x64-needs-dotnet8**: a much smaller `StepCapture.exe` that needs the
-     [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) installed.
-3. Unzip it and double-click `StepCapture.exe`.
-   Because the exe isn't code-signed yet, Windows SmartScreen may say "Windows protected your PC".
-   Click **More info → Run anyway**.
+   (When a version tag such as `v0.2.0` is pushed, the same files are attached to a GitHub **Release**.)
+2. Under **Artifacts**, download **StepCapture-Setup**, unzip it and run `StepCapture-Setup-<version>.exe`.
+3. The installer needs no admin rights by default. It installs for your account, adds a Start menu entry,
+   optionally a desktop shortcut, and makes `.stepguide` files open in StepCapture. It also offers an
+   "install for all users" option, which asks for admin rights.
+4. Uninstall from **Settings → Apps** (or the Start menu's "Uninstall StepCapture"). Your settings in
+   `%LOCALAPPDATA%\StepCapture` are kept, so reinstalling remembers your theme and letterhead.
 
-When a version tag such as `v0.1.0` is pushed, the same files are attached to a GitHub **Release**.
+Running a newer installer upgrades the existing install in place.
+
+Because the installer isn't code-signed yet, Windows SmartScreen may say "Windows protected your PC".
+Click **More info → Run anyway**.
+
+### Portable exe
+
+If you'd rather not install anything, the same build also produces:
+
+- **StepCapture-win-x64**: a single `StepCapture.exe` (about 70 MB) that runs on any 64-bit Windows 10/11 PC.
+- **StepCapture-win-x64-needs-dotnet8**: a much smaller `StepCapture.exe` that needs the
+  [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ## Build it yourself on Windows
 
@@ -88,7 +98,8 @@ If anything goes wrong, details are written to `%LOCALAPPDATA%\StepCapture\error
 | `src/StepCapture.Core` | Cross-platform logic: the step model, turning raw clicks and keys into steps, captions, exporters and the `.stepguide` file format. |
 | `src/StepCapture.App` | The WPF Windows app: global input hooks, screen capture, UI Automation lookups, the recording bar and the editor. |
 | `tests/StepCapture.Core.Tests` | xUnit tests for the core logic and exporters. |
-| `.github/workflows/build.yml` | Builds, tests and publishes the exe on `windows-latest`. |
+| `installer/StepCapture.iss` | Inno Setup script for the installer. |
+| `.github/workflows/build.yml` | Builds, tests and publishes the installer and portable exes on `windows-latest`. |
 
 How recording works: global low-level mouse and keyboard hooks run on their own thread. On each click, the
 screen is captured right away, before the clicked app reacts. A worker thread then asks UI Automation what
