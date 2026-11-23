@@ -79,13 +79,24 @@ internal sealed class Recorder : IDisposable
     /// Adds a screenshot of the monitor under the cursor as an overview step, without needing a click.
     /// Works while paused too, so you can pause, set the screen up, and take a shot.
     /// </summary>
-    /// <param name="drawCursor">False when triggered from the recording bar, where the cursor is just on the button.</param>
-    public void CaptureScreenshot(bool drawCursor)
+    /// <param name="fromBar">
+    /// True when triggered from the recording bar: the pointer is just on the button, so capture the monitor
+    /// showing the app being recorded (the bar never takes focus) and leave the cursor out.
+    /// False for the hotkey: capture the monitor under the pointer, with the cursor.
+    /// </param>
+    public void CaptureScreenshot(bool fromBar)
     {
         if (!_running) return;
-        GetCursorPos(out var pt);
         _typingRun = false;
-        var shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y);
+        CapturedScreen shot;
+        if (fromBar)
+            shot = ScreenCapture.CaptureForegroundMonitor();
+        else
+        {
+            GetCursorPos(out var pt);
+            shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y);
+        }
+        bool drawCursor = !fromBar;
         if (_queue.TryAdd(new RawShot(DateTimeOffset.Now, shot, drawCursor)))
             _ui.BeginInvoke(() => ScreenshotTaken?.Invoke());
         else
@@ -145,7 +156,7 @@ internal sealed class Recorder : IDisposable
 
         if (mods == (Modifiers.Ctrl | Modifiers.Shift) && vk == ScreenshotHotkeyVk)
         {
-            try { CaptureScreenshot(drawCursor: true); }
+            try { CaptureScreenshot(fromBar: false); }
             catch (Exception ex) { Log.Error("Screenshot hotkey", ex); }
             return true; // swallow the hotkey
         }

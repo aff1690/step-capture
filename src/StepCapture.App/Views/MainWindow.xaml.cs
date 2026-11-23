@@ -197,7 +197,7 @@ public partial class MainWindow : Window
         _bar = new RecordingBar();
         _bar.ScreenshotClicked += () =>
         {
-            try { _recorder?.CaptureScreenshot(drawCursor: false); }
+            try { _recorder?.CaptureScreenshot(fromBar: true); }
             catch (Exception ex) { Log.Error("Screenshot", ex); }
         };
         _bar.PauseClicked += TogglePause;
@@ -332,13 +332,54 @@ public partial class MainWindow : Window
 
     private void OnAddScreenshotMenu(object sender, RoutedEventArgs e)
     {
+        BuildAddShotMenu();
         AddShotMenu.PlacementTarget = AddShotButton;
         AddShotMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         AddShotMenu.IsOpen = true;
     }
 
-    /// <summary>Hides StepCapture, waits 3 seconds so you can set the screen up, and captures the monitor under the cursor.</summary>
-    private async void OnCaptureTimed(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Lists one "capture in 3 seconds" entry per monitor (numbered left to right), plus paste and import.
+    /// Rebuilt each time so plugging in a screen shows up straight away.
+    /// </summary>
+    private void BuildAddShotMenu()
+    {
+        AddShotMenu.Items.Clear();
+        var monitors = ScreenCapture.Monitors();
+        if (monitors.Count <= 1)
+        {
+            var only = new MenuItem { Header = "Capture the screen in 3 seconds" };
+            only.Click += (_, _) => CaptureTimed(monitors.Count == 1 ? monitors[0] : null);
+            AddShotMenu.Items.Add(only);
+        }
+        else
+        {
+            AddShotMenu.Items.Add(new MenuItem { Header = "Capture in 3 seconds:", IsEnabled = false });
+            foreach (var m in monitors)
+            {
+                var item = new MenuItem { Header = "      " + m.Label, ToolTip = "Screens are numbered from left to right" };
+                item.Click += (_, _) => CaptureTimed(m);
+                AddShotMenu.Items.Add(item);
+            }
+            var underPointer = new MenuItem { Header = "      Screen under the mouse pointer",
+                ToolTip = "Move the pointer to the screen you want during the countdown" };
+            underPointer.Click += (_, _) => CaptureTimed(null);
+            AddShotMenu.Items.Add(underPointer);
+        }
+        AddShotMenu.Items.Add(new Separator());
+        var paste = new MenuItem { Header = "Paste from clipboard", InputGestureText = "Ctrl+Shift+V" };
+        paste.Click += OnPasteScreenshot;
+        AddShotMenu.Items.Add(paste);
+        var file = new MenuItem { Header = "From an image file…" };
+        file.Click += OnImportImage;
+        AddShotMenu.Items.Add(file);
+    }
+
+    /// <summary>
+    /// Hides StepCapture, waits 3 seconds so you can set the screen up, then captures the chosen monitor
+    /// (or the one under the pointer when <paramref name="monitor"/> is null).
+    /// </summary>
+    private async void CaptureTimed(MonitorChoice? monitor)
     {
         if (_recorder is not null) return;
         var previous = WindowState == WindowState.Minimized ? WindowState.Normal : WindowState;
@@ -348,8 +389,15 @@ public partial class MainWindow : Window
             await Task.Delay(3000);
             byte[] png;
             string? app;
-            NativeMethods.GetCursorPos(out var pt);
-            using (var shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y))
+            CapturedScreen shot;
+            if (monitor is not null)
+                shot = ScreenCapture.Capture(monitor);
+            else
+            {
+                NativeMethods.GetCursorPos(out var pt);
+                shot = ScreenCapture.CaptureMonitorAt(pt.X, pt.Y);
+            }
+            using (shot)
                 png = Annotator.RenderPlain(shot, drawCursor: false);
             app = await Task.Run(() => ElementInspector.Focused().Info?.AppName);
             AddScreenshotStep(png, CaptionBuilder.ForScreenshot(app), app);

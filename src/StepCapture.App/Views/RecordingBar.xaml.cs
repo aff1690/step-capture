@@ -18,7 +18,7 @@ public partial class RecordingBar : Window
     {
         InitializeComponent();
         ToolTip = $"Drag to move. {Recorder.ScreenshotHotkeyText} takes a screenshot, {Recorder.PauseHotkeyText} pauses, {Recorder.StopHotkeyText} stops.";
-        ShotButton.ToolTip = $"Add a screenshot of the screen as it is now, without clicking ({Recorder.ScreenshotHotkeyText})";
+        ShotButton.ToolTip = $"Add a screenshot of the screen showing the app you are working in, without clicking. {Recorder.ScreenshotHotkeyText} captures the screen under the mouse pointer instead.";
         Loaded += (_, _) =>
         {
             var area = SystemParameters.WorkArea;

@@ -10,8 +10,9 @@ cursor and a highlight ring where you clicked. Typing becomes a "Type ..." step 
 - **Recording** with a small floating bar (Pause / Stop) that stays out of its own screenshots.
   Hotkeys: **Ctrl+Shift+F8** takes a screenshot, **Ctrl+Shift+F9** pauses or resumes, **Ctrl+Shift+F10** stops.
 - **Screenshots without clicking**, for overviews of a screen or layout: the **Screenshot** button on the recording bar
-  or Ctrl+Shift+F8 while recording (this works while paused too). Outside recording, **Add screenshot** captures the
-  screen after 3 seconds, pastes from the clipboard (Ctrl+Shift+V, works with Snipping Tool), or adds image files.
+  captures the monitor showing the app you're working in, and Ctrl+Shift+F8 captures the monitor under the mouse
+  pointer (both work while paused too). Outside recording, **Add screenshot** lets you pick a monitor (numbered left
+  to right) and captures it after 3 seconds, pastes from the clipboard (Ctrl+Shift+V, works with Snipping Tool), or adds image files.
   You can also drop pictures onto the window.
 - **Overview steps** are shown as a heading without a step number, so a guide can open with a short tour of the
   screen before steps 1, 2, 3. New screenshots start as overviews; tick or untick "Overview" on any step to switch.
